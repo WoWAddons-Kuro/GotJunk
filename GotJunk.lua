@@ -31,7 +31,7 @@ local DEFAULTS = {
   ShowPanel = nil,      -- decided on first login: false if an LDB display host is present
   Locked = false,
   Position = nil,       -- { point, x, y }
-  Minimap = { hide = false },
+  Minimap = { hide = true },
   Protect = {},         -- account-wide protected list: [itemID] = true
   BuiltinRemoved = {},  -- built-in entries the user removed: [itemID] = true (persists across updates)
   UsePerCharacter = false, -- show/use the per-character tier (GotJunkCharDB.Protect)

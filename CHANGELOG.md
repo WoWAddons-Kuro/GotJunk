@@ -32,3 +32,4 @@ First release. Classic Era and WoW Forever.
 
 ### Slash
 - `/gotjunk` - toggle panel | options | lock | reset | drop | scan | protect | status | tipdebug
+- Minimap button hidden by default (toggle in options).
