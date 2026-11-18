@@ -367,6 +367,9 @@ function GJ.DropSlot(w, reason)
   if CursorHasItem() then ClearCursor(); return false end
   Print("%sdestroyed|r %s x%d (%s)%s", "|cffff6060", w.link or w.name, count or w.count, FormatMoney(w.price * (count or w.count)),
     reason and ("  [" .. reason .. "]") or "")
+  -- Rescan now rather than waiting for BAG_UPDATE_DELAYED so the panel/tooltip reflect the
+  -- drop immediately (callers that loop over a plan rescan again at the end; cheap).
+  GJ.Scan()
   return true
 end
 
@@ -497,15 +500,20 @@ local function OnClick(_, button)
   if button == "RightButton" then
     if IsShiftKeyDown() then
       local w = GJ.Worst()
-      if w then GJ.ToggleProtect(w.itemID) end
-      -- Re-render the tooltip in place so the new ranking is visible without re-hovering.
-      if panel and GameTooltip:IsOwned(panel) then
-        local onEnter = panel:GetScript("OnEnter")
-        if onEnter then onEnter(panel) end
-      end
+      if w then GJ.ToggleProtect(w.itemID) else Print("nothing to protect - no eligible junk") end
     else GJ.OpenOptions() end
   else
     GJ.DropWorst()
+  end
+  GJ.RefreshTooltip()
+end
+
+-- Re-render the panel tooltip in place (if it is up) so a protect/drop shows its effect without
+-- the player having to move the mouse off and back on.
+function GJ.RefreshTooltip()
+  if panel and GameTooltip:IsOwned(panel) and panel:IsMouseOver() then
+    local onEnter = panel:GetScript("OnEnter")
+    if onEnter then onEnter(panel) end
   end
 end
 
