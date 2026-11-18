@@ -68,7 +68,7 @@ Trigger: loot-button `OnMouseDown` (hooked). Era: `LootButton1..4`. Forever/Main
 
 ### Standalone panel
 - One row: icon + `x10 - 10c Worthless Sandals`, draggable (unless locked), same clicks as LDB.
-- Hidden when there are no candidates.
+- Hidden when there are no candidates or free slots >= ShowWhenFreeBelow, EXCEPT during a **preview**: 30s after login and 30s after each hover (so it can be found and moved).`n- **Occupancy strip** above the row: one 4px dot per general-bag slot, gold = occupied, grey = free, up to 20 per row (rows balanced).
 - `db.ShowPanel` is decided once at first login: `false` if an LDB display host is detected
   (callback registrations on `LibDataBroker_AttributeChanged*` other than ours, or a known host
   addon loaded: ChocolateBar, Bazooka, TitanClassic/Titan, Fortress, StatBlockCore, ButtonBin,

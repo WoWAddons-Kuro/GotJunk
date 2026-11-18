@@ -62,6 +62,7 @@ GJ.JunkSlots = {}        -- ascending by maxStackValue (price * maxStack):
                          -- { bag, slot, itemID, name, link, icon, count, price, value, quality, maxStack, maxStackValue }
 GJ.Junk_TotalValue = 0
 GJ.FreeSlots = 0
+GJ.Occupancy = {}         -- array over general-bag slots: true occupied / false free (drives the dot strip)
 GJ.Scan_Incomplete = false  -- some item info was not cached; rescan on GET_ITEM_INFO_RECEIVED
 
 local function IsJunkCandidate(itemID, noValue, containerQuality)
@@ -78,13 +79,16 @@ end
 
 function GJ.Scan()
   local list, total, free, incomplete = {}, 0, 0, false
+  local occupancy = {}   -- ordered per bag slot: true = occupied, false = free (general bags only)
   for bag = 0, NUM_BAGS do
     local n = GetContainerNumSlots(bag) or 0
     if n > 0 then
       local f, family = GetContainerNumFreeSlots(bag)
-      if (family or 0) == 0 then free = free + (f or 0) end
+      local general = (family or 0) == 0
+      if general then free = free + (f or 0) end
       for slot = 1, n do
         local itemID, count, locked, noValue, cq, tex = GetSlotInfo(bag, slot)
+        if general then occupancy[#occupancy + 1] = itemID ~= nil end
         if itemID and not locked then
           local ok, name, link, quality, icon, price, maxStack = IsJunkCandidate(itemID, noValue, cq)
           if ok == nil then incomplete = true
@@ -106,7 +110,7 @@ function GJ.Scan()
     if a.bag ~= b.bag then return a.bag < b.bag end
     return a.slot < b.slot
   end)
-  GJ.JunkSlots, GJ.Junk_TotalValue, GJ.FreeSlots, GJ.Scan_Incomplete = list, total, free, incomplete
+  GJ.JunkSlots, GJ.Junk_TotalValue, GJ.FreeSlots, GJ.Scan_Incomplete, GJ.Occupancy = list, total, free, incomplete, occupancy
   GJ.Refresh()
 end
 
@@ -251,10 +255,54 @@ local function RestorePosition()
   else panel:SetPoint("TOP", UIParent, "TOP", 0, -120) end
 end
 
+-- Occupancy strip: one tiny dot per bag slot, bright = occupied, dim = free. Rows of up to
+-- DOTS_PER_ROW so a 16-slot starter set is one row and 80+ slots still fit in a few rows.
+local DOT_SIZE, DOT_GAP, DOTS_PER_ROW, DOTS_TOP_PAD = 4, 2, 20, 5
+local PANEL_ROW_HEIGHT = 24
+local dots = {}
+
+local function UpdateDots()
+  local occ = GJ.Occupancy
+  local n = #occ
+  if n == 0 then for _, d in ipairs(dots) do d:Hide() end return 0, 0 end
+  local rows = math.ceil(n / DOTS_PER_ROW)
+  local perRow = math.ceil(n / rows)   -- balance rows (e.g. 28 slots -> 14 + 14, not 20 + 8)
+  for i = 1, n do
+    local d = dots[i]
+    if not d then
+      d = panel:CreateTexture(nil, "ARTWORK")
+      d:SetSize(DOT_SIZE, DOT_SIZE)
+      d:SetTexture("Interface\\Buttons\\WHITE8x8")
+      dots[i] = d
+    end
+    local row, col = math.floor((i - 1) / perRow), (i - 1) % perRow
+    d:ClearAllPoints()
+    d:SetPoint("TOPLEFT", panel, "TOPLEFT", 5 + col * (DOT_SIZE + DOT_GAP), -(DOTS_TOP_PAD + row * (DOT_SIZE + DOT_GAP)))
+    if occ[i] then d:SetVertexColor(1, 0.82, 0, 0.95) else d:SetVertexColor(0.45, 0.45, 0.45, 0.6) end
+    d:Show()
+  end
+  for i = n + 1, #dots do dots[i]:Hide() end
+  local width = perRow * (DOT_SIZE + DOT_GAP) - DOT_GAP + 10
+  local height = DOTS_TOP_PAD + rows * (DOT_SIZE + DOT_GAP) - DOT_GAP
+  return width, height
+end
+
+-- Preview: force the panel visible (ignoring the free-slot gate) until this GetTime().
+GJ.PreviewUntil = 0
+local PREVIEW_SECONDS = 30
+local previewTimer
+function GJ.StartPreview(seconds)
+  seconds = seconds or PREVIEW_SECONDS
+  GJ.PreviewUntil = GetTime() + seconds
+  if previewTimer then previewTimer:Cancel() end
+  previewTimer = C_Timer.NewTimer(seconds + 0.1, function() previewTimer = nil; GJ.Refresh() end)
+  GJ.Refresh()
+end
+
 local function CreatePanel()
   if panel then return panel end
   panel = CreateFrame("Button", "GotJunkPanel", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
-  panel:SetSize(220, 24)
+  panel:SetSize(220, PANEL_ROW_HEIGHT)
   panel:SetFrameStrata("MEDIUM")
   panel:SetClampedToScreen(true)
   panel:SetMovable(true)
@@ -267,7 +315,7 @@ local function CreatePanel()
   end
   panel.icon = panel:CreateTexture(nil, "ARTWORK")
   panel.icon:SetSize(16, 16)
-  panel.icon:SetPoint("LEFT", 5, 0)
+  panel.icon:SetPoint("BOTTOMLEFT", 5, (PANEL_ROW_HEIGHT - 16) / 2)
   panel.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
   panel.text = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
   panel.text:SetPoint("LEFT", panel.icon, "RIGHT", 5, 0)
@@ -278,6 +326,7 @@ local function CreatePanel()
   panel:SetScript("OnDragStop", function(self) self:StopMovingOrSizing(); SavePosition() end)
   panel:SetScript("OnClick", OnClick)
   panel:SetScript("OnEnter", function(self)
+    GJ.StartPreview()  -- keep it around a while after the player found it
     -- Anchor to the side of the panel with the most screen room so the tooltip never covers it.
     local _, cy = self:GetCenter()
     local screenH = UIParent:GetHeight()
@@ -299,8 +348,10 @@ function GJ.Refresh()
   local w = GJ.Worst()
   local pending = GJ.AutoDrop_Pending()
   -- Display gate: the worst slot is only surfaced once bags are getting tight; the
-  -- tooltip/status keep the full list regardless.
-  if w and GJ.FreeSlots >= (db.ShowWhenFreeBelow or 0) then w = nil end
+  -- tooltip/status keep the full list regardless. A preview window (login / hover)
+  -- overrides the gate so the player can see and move the panel.
+  local previewing = GetTime() < (GJ.PreviewUntil or 0)
+  if w and not previewing and GJ.FreeSlots >= (db.ShowWhenFreeBelow or 0) then w = nil end
   local text
   if w then
     text = string.format("%sx%d - %s|r %s", pending and "|cffff4040" or COLOR, w.count, FormatMoney(w.value), w.link or w.name)
@@ -311,11 +362,13 @@ function GJ.Refresh()
   end
   if db.ShowPanel then
     CreatePanel()
-    if w then
-      panel.icon:SetTexture(w.icon)
-      panel.text:SetText(text)
-      local width = panel.text:GetStringWidth() + 16 + 20
-      panel:SetWidth(math.max(120, math.min(400, width)))
+    if w or previewing then
+      panel.icon:SetTexture(w and w.icon or ADDON_ICON)
+      panel.text:SetText(text or (COLOR .. "no junk to drop|r"))
+      local textWidth = panel.text:GetStringWidth() + 16 + 20
+      local dotsWidth, dotsHeight = UpdateDots()
+      panel:SetWidth(math.max(120, math.min(400, math.max(textWidth, dotsWidth))))
+      panel:SetHeight(PANEL_ROW_HEIGHT + dotsHeight)
       panel:Show()
     else
       panel:Hide()
@@ -479,6 +532,7 @@ f:SetScript("OnEvent", function(_, event, arg1)
       db.ShowPanel = not HasLDBHost()
       Print("first run: standalone panel %s (%s). /gotjunk to toggle, /gotjunk options for settings.", db.ShowPanel and "shown" or "hidden", db.ShowPanel and "no LDB display found" or "LDB display found")
     end
+    GJ.StartPreview()  -- show the panel for a while at login so the player can find / move it
     HookLootButtons()
     f:RegisterEvent("BAG_UPDATE_DELAYED")
     f:RegisterEvent("GET_ITEM_INFO_RECEIVED")
