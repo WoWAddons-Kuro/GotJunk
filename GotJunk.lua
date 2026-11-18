@@ -369,7 +369,8 @@ local function CreatePanel()
   panel:SetScript("OnDragStop", function(self) self:StopMovingOrSizing(); SavePosition() end)
   panel:SetScript("OnClick", OnClick)
   panel:SetScript("OnEnter", function(self)
-    GJ.StartPreview()  -- keep it around a while after the player found it
+    GJ.StartPreview()  -- keep it around a while after the player found it (also refreshes: lifts the gate)
+    GJ.Refresh()
     -- Anchor to the side of the panel with the most screen room so the tooltip never covers it.
     local _, cy = self:GetCenter()
     local screenH = UIParent:GetHeight()
@@ -379,7 +380,7 @@ local function CreatePanel()
     if not db.Locked then GameTooltip:AddLine("Drag to move  (/gotjunk lock)", 0.5, 0.5, 0.5) end
     GameTooltip:Show()
   end)
-  panel:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  panel:SetScript("OnLeave", function() GameTooltip:Hide(); GJ.Refresh() end)
   RestorePosition()
   return panel
 end
@@ -391,11 +392,12 @@ function GJ.Refresh()
   local w = GJ.Worst()
   local pending = GJ.AutoDrop_Pending()
   -- Display gate: the worst slot is only surfaced once bags are getting tight; the
-  -- tooltip/status keep the full list regardless. A preview window (login / hover) only
-  -- forces the *panel* visible (showing "no eligible junk"); it never promotes an
-  -- ineligible slot into the display.
+  -- tooltip/status keep the full list regardless. The login preview only forces the
+  -- *panel* visible (showing "no eligible junk"). While the mouse is OVER the panel the
+  -- gate is lifted so the row shows exactly what a click would destroy.
   local previewing = GetTime() < (GJ.PreviewUntil or 0)
-  if w and GJ.FreeSlots >= (db.ShowWhenFreeBelow or 0) then w = nil end
+  local hovering = panel and panel:IsMouseOver()
+  if w and not hovering and GJ.FreeSlots >= (db.ShowWhenFreeBelow or 0) then w = nil end
   local text
   if w then
     text = string.format("%sx%d - %s|r %s", pending and "|cffff4040" or COLOR, w.count, FormatMoney(w.value), w.link or w.name)
