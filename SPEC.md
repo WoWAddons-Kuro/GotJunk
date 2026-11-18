@@ -49,7 +49,16 @@ general-purpose bags (`GetContainerNumFreeSlots` bagFamily == 0).
 |---|---|---|
 | `AutoHide` | false | hide the panel when nothing is shown; off = panel always visible |
 | `ShowWhenFreeBelow` | 3 | panel/LDB show the worst slot only while `freeSlots < ShowWhenFreeBelow` (0 = never); tooltip always lists everything |
-| `FoodWaterMode` | `lowlevel` | `never` = food/drink (classID 0, subclass 5) is never junk; `lowlevel` = the rules below apply |`n| `FoodWater_ExcessNonBuff` | false | level-appropriate **non-buff** food/water: per item keep the fullest `FoodWaterKeepStacks` slots, the rest are junk |`n| `FoodWaterKeepStacks` | 3 | N for the excess rule |`n| `FoodWater_LowLevelBuffEligible` | true | Well Fed food whose `minLevel + 10 <= playerLevel` is junk |`n| `FoodWater_OffClassBuffEligible` | false | Well Fed food naming a stat and none of them useful to the class (stamina/health never count) is junk |`n`nBuff detection: `GJ.FoodProfile(itemID)` scans a hidden `GameTooltip` once per item for a "well fed" line and records which stat words appear; cached. Non-buff food/water is junk when low-level (`minLevel + 10 <= playerLevel`) or an excess stack.
+| `FoodWaterMode` | `lowlevel` | `never` = food/drink (classID 0, subclass 5) is never junk; `lowlevel` = the rules below apply |
+| `FoodWater_ExcessNonBuff` | false | level-appropriate **non-buff** food/water: per item keep the fullest `FoodWaterKeepStacks` slots, the rest are junk |
+| `FoodWaterKeepStacks` | 3 | N for the excess rule |
+| `FoodWater_LowLevelBuffEligible` | true | Well Fed food whose `minLevel + 10 <= playerLevel` is junk |
+| `FoodWater_OffClassBuffEligible` | false | Well Fed food naming a stat and none of them useful to the class (stamina/health never count) is junk |
+
+Buff detection: `GJ.FoodProfile(itemID)` scans a hidden `GameTooltip` once per item for a "well fed" line and records which stat words appear; cached. Non-buff food/water is junk when low-level (`minLevel + 10 <= playerLevel`) or an excess stack. The table continues:
+
+| key | default | meaning |
+|---|---|---|
 | `KeepClearSlots` | 1 | auto-drop is considered only while `freeSlots < KeepClearSlots` |
 | `AutoDrop_Below10c` | false | full-stack value must be `< 10` copper |
 | `AutoDrop_Below2Pct` | false | full-stack value must be `< 0.02 * Junk_TotalValue` |
@@ -177,10 +186,11 @@ GotJunkCharDB = { Protect = { [itemID] = true } }
 - [x] README / CHANGELOG / PROJECT_STRUCTURE entry, initial commit
 - [x] Full-stack-value ranking, ShowWhenFreeBelow gate, preview window, occupancy strip
 - [ ] In-game verification of the Forever loot-button hook (`LootFrame.ScrollBox` item frames)
-- [ ] Protected lists v2: DB model (`GotJunkCharDB`, `UsePerCharacter`, `BuiltinRemoved`), `GJ.IsProtected`
-- [ ] `BuiltinProtect.lua` empty seed + TOC entries
-- [ ] `ProtectUI.lua`: three list boxes, promote/demote/delete/restore, Copy-list frame, add row
-- [ ] Owner supplies built-in item IDs via Copy-list hand-off
+- [x] Protected lists v2: DB model (`GotJunkCharDB`, `UsePerCharacter`, `BuiltinRemoved`), `GJ.IsProtected`
+- [x] `BuiltinProtect.lua` seed (5 items) + TOC entries
+- [x] `ProtectUI.lua`: three list boxes, promote/demote/delete/un-protect/re-protect, Copy-list frame, add row
+- [x] Food & water: never / low-level radio + excess / low-level-buff / off-class-buff checkboxes, tooltip-based buff detection
+- [ ] Owner supplies further built-in item IDs via Copy-list hand-off (ongoing)
 
 ## Open questions / later
 - Keybinding `GotJunk: Drop worst junk` (cheap to add if auto-loot users want it).
