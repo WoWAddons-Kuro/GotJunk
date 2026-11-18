@@ -9,11 +9,18 @@ local DB_VERSION = 1
 local ADDON_ICON = "Interface\\Icons\\INV_Misc_Bag_10_Green"
 local HEARTHSTONE_ID = 6948
 local QUEST_CLASS_ID = 12
+local CONSUMABLE_CLASS_ID = 0
+local FOOD_DRINK_SUBCLASS_ID = 5
+-- Vendor food/water tiers in Classic unlock at required level 1, 5, 15, 25, 35, 45, 55: once the
+-- player is this many levels past an item's required level, a better tier has been available.
+local FOOD_TIER_SPAN = 10
 local COLOR = "|cff9d9d9d"   -- poor-quality grey for the prefix
 
 local DEFAULTS = {
   KeepClearSlots = 1,
   ShowWhenFreeBelow = 3,  -- display shows the worst slot only while free slots < this (0 = never)
+  FoodWaterMode = "stacks", -- "never" | "stacks" (junk beyond the fullest N stacks per item) | "lowlevel"
+  FoodWaterKeepStacks = 3,
   AutoDrop_Below10c = false,
   AutoDrop_Below2Pct = false,
   ShowPanel = nil,      -- decided on first login: false if an LDB display host is present
@@ -67,14 +74,15 @@ GJ.Scan_Incomplete = false  -- some item info was not cached; rescan on GET_ITEM
 
 local function IsJunkCandidate(itemID, noValue, containerQuality)
   if not itemID or noValue or itemID == HEARTHSTONE_ID or db.Protect[itemID] then return false end
-  local name, link, quality, _, _, _, _, maxStack, _, icon, price, classID = GetItemInfo(itemID)
+  local name, link, quality, _, minLevel, _, _, maxStack, _, icon, price, classID, subclassID = GetItemInfo(itemID)
   if not name then return nil end  -- not cached yet
   quality = quality or containerQuality
   if quality == nil or quality > 1 then return false end
   if not price or price <= 0 then return false end
   if classID == QUEST_CLASS_ID then return false end
   if not maxStack or maxStack < 1 then maxStack = 1 end
-  return true, name, link, quality, icon, price, maxStack
+  local isFoodWater = classID == CONSUMABLE_CLASS_ID and subclassID == FOOD_DRINK_SUBCLASS_ID
+  return true, name, link, quality, icon, price, maxStack, isFoodWater, minLevel or 1
 end
 
 function GJ.Scan()
@@ -90,19 +98,49 @@ function GJ.Scan()
         local itemID, count, locked, noValue, cq, tex = GetSlotInfo(bag, slot)
         if general then occupancy[#occupancy + 1] = itemID ~= nil end
         if itemID and not locked then
-          local ok, name, link, quality, icon, price, maxStack = IsJunkCandidate(itemID, noValue, cq)
+          local ok, name, link, quality, icon, price, maxStack, isFoodWater, minLevel = IsJunkCandidate(itemID, noValue, cq)
           if ok == nil then incomplete = true
           elseif ok then
             local value = price * (count or 1)
-            total = total + value
             list[#list + 1] = { bag = bag, slot = slot, itemID = itemID, name = name, link = link,
               icon = icon or tex, count = count or 1, price = price, value = value, quality = quality,
-              maxStack = maxStack, maxStackValue = price * maxStack }
+              maxStack = maxStack, maxStackValue = price * maxStack,
+              isFoodWater = isFoodWater, minLevel = minLevel }
           end
         end
       end
     end
   end
+  -- Food & water policy. Candidates flagged isFoodWater are filtered here, after the full
+  -- pass, because the "stacks" mode needs to know how many slots of each item exist.
+  local mode = db.FoodWaterMode or "stacks"
+  if mode == "never" then
+    local kept = {}
+    for _, j in ipairs(list) do if not j.isFoodWater then kept[#kept + 1] = j end end
+    list = kept
+  elseif mode == "stacks" then
+    local keepN = db.FoodWaterKeepStacks or 3
+    local byItem = {}
+    for _, j in ipairs(list) do
+      if j.isFoodWater then byItem[j.itemID] = byItem[j.itemID] or {}; table.insert(byItem[j.itemID], j) end
+    end
+    local drop = {}
+    for _, slots in pairs(byItem) do
+      table.sort(slots, function(a, b) return a.count > b.count end)  -- keep the fullest stacks
+      for i = keepN + 1, #slots do drop[slots[i]] = true end
+    end
+    local kept = {}
+    for _, j in ipairs(list) do if not j.isFoodWater or drop[j] then kept[#kept + 1] = j end end
+    list = kept
+  elseif mode == "lowlevel" then
+    local playerLevel = UnitLevel("player") or 1
+    local kept = {}
+    for _, j in ipairs(list) do
+      if not j.isFoodWater or playerLevel >= (j.minLevel or 1) + FOOD_TIER_SPAN then kept[#kept + 1] = j end
+    end
+    list = kept
+  end
+  for _, j in ipairs(list) do total = total + j.value end
   -- Rank by what the slot is worth when FULL: a slot of 1x 5c pelt (max 1) beats 3x 1c water (max 20 = 20c).
   table.sort(list, function(a, b)
     if a.maxStackValue ~= b.maxStackValue then return a.maxStackValue < b.maxStackValue end
@@ -426,8 +464,35 @@ local function CreateOptions()
   local c2 = Check("AutoDrop_Below2Pct", "Auto-drop below 2% of all bag junk value", "Destroy the worst slot only if it is worth less than 2% of all grey/white junk in your bags.")
   local c3 = Check("ShowPanel", "Show standalone panel", "Off by default when a LibDataBroker display (ChocolateBar, Titan...) is present.")
   c3:SetPoint("TOPLEFT", c2, "BOTTOMLEFT", 0, -20)
+
+  -- Food & water policy (radio group)
+  local fwLabel = optionsFrame:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+  fwLabel:SetPoint("TOPLEFT", c3, "BOTTOMLEFT", 0, -16); fwLabel:SetText("Food and water")
+  local radios = {}
+  local function Radio(anchor, mode, label, tip)
+    local r = CreateFrame("CheckButton", nil, optionsFrame, "UIRadioButtonTemplate")
+    r:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 4, -6)
+    r.text = r:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall"); r.text:SetPoint("LEFT", r, "RIGHT", 4, 0); r.text:SetText(label)
+    r.tooltipText = tip
+    r:SetScript("OnClick", function() db.FoodWaterMode = mode; for _, o in ipairs(radios) do o:SetChecked(o.mode == mode) end; GJ.Scan() end)
+    r.mode = mode
+    r.Update = function(self) self:SetChecked(db.FoodWaterMode == mode) end
+    radios[#radios + 1] = r
+    return r
+  end
+  local r1 = Radio(fwLabel, "never", "Never junk food or water")
+  local r2 = Radio(r1, "stacks", "Only junk food and water beyond the fullest N stacks of each item")
+  local r3 = Radio(r2, "lowlevel", "Only junk low-level food and water (required level 10+ below yours)", "Vendor food/water tiers unlock every ~10 levels; once the next tier is available the old one is junk.")
+  local fwSlider = CreateFrame("Slider", "GotJunkOptionsFoodStacks", optionsFrame, "OptionsSliderTemplate")
+  fwSlider:SetPoint("TOPLEFT", r3, "BOTTOMLEFT", 4, -24)
+  fwSlider:SetWidth(220); fwSlider:SetMinMaxValues(0, 10); fwSlider:SetValueStep(1); fwSlider:SetObeyStepOnDrag(true)
+  _G[fwSlider:GetName() .. "Low"]:SetText("0"); _G[fwSlider:GetName() .. "High"]:SetText("10")
+  fwSlider.Text = _G[fwSlider:GetName() .. "Text"]
+  fwSlider:SetScript("OnValueChanged", function(self, v) v = math.floor(v + 0.5); db.FoodWaterKeepStacks = v; self.Text:SetText("Stacks of each food/water to keep: " .. v); GJ.Scan() end)
+  fwSlider.Update = function(self) self:SetValue(db.FoodWaterKeepStacks or 3); self.Text:SetText("Stacks of each food/water to keep: " .. (db.FoodWaterKeepStacks or 3)) end
+
   local showSlider = CreateFrame("Slider", "GotJunkOptionsShowWhen", optionsFrame, "OptionsSliderTemplate")
-  showSlider:SetPoint("TOPLEFT", c3, "BOTTOMLEFT", 8, -28)
+  showSlider:SetPoint("TOPLEFT", fwSlider, "BOTTOMLEFT", 0, -36)
   showSlider:SetWidth(220); showSlider:SetMinMaxValues(0, 20); showSlider:SetValueStep(1); showSlider:SetObeyStepOnDrag(true)
   _G[showSlider:GetName() .. "Low"]:SetText("0"); _G[showSlider:GetName() .. "High"]:SetText("20")
   showSlider.Text = _G[showSlider:GetName() .. "Text"]
