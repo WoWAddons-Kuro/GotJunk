@@ -498,6 +498,11 @@ end
 local LDB = LibStub and LibStub("LibDataBroker-1.1", true)
 local DBIcon = LibStub and LibStub("LibDBIcon-1.0", true)
 local ldbObject
+-- The standalone panel frame. Declared HERE, above every function that references it
+-- (OnClick, ShowPanelTooltip, HidePanelTooltip, RefreshTooltip, Refresh, CreatePanel), so
+-- they all close over the same upvalue. A later `local panel` would leave these functions
+-- bound to an always-nil global - exactly the "panel is nil" tipdebug symptom.
+local panel
 
 local function OnClick(_, button)
   if button == "RightButton" then
@@ -609,7 +614,6 @@ end
 -- ---------------------------------------------------------------------------
 -- standalone panel
 -- ---------------------------------------------------------------------------
-local panel
 
 local function SavePosition()
   local point, _, _, x, y = panel:GetPoint(1)
