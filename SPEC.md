@@ -47,7 +47,7 @@ general-purpose bags (`GetContainerNumFreeSlots` bagFamily == 0).
 
 | key | default | meaning |
 |---|---|---|
-| `KeepClearSlots` | 1 | auto-drop is considered only while `freeSlots < KeepClearSlots` |
+| `ShowWhenFreeBelow` | 3 | panel/LDB show the worst slot only while `freeSlots < ShowWhenFreeBelow` (0 = never); tooltip always lists everything |`n| `KeepClearSlots` | 1 | auto-drop is considered only while `freeSlots < KeepClearSlots` |
 | `AutoDrop_Below10c` | false | full-stack value must be `< 10` copper |
 | `AutoDrop_Below2Pct` | false | full-stack value must be `< 0.02 * Junk_TotalValue` |
 

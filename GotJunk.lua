@@ -13,6 +13,7 @@ local COLOR = "|cff9d9d9d"   -- poor-quality grey for the prefix
 
 local DEFAULTS = {
   KeepClearSlots = 1,
+  ShowWhenFreeBelow = 3,  -- display shows the worst slot only while free slots < this (0 = never)
   AutoDrop_Below10c = false,
   AutoDrop_Below2Pct = false,
   ShowPanel = nil,      -- decided on first login: false if an LDB display host is present
@@ -297,6 +298,9 @@ end
 function GJ.Refresh()
   local w = GJ.Worst()
   local pending = GJ.AutoDrop_Pending()
+  -- Display gate: the worst slot is only surfaced once bags are getting tight; the
+  -- tooltip/status keep the full list regardless.
+  if w and GJ.FreeSlots >= (db.ShowWhenFreeBelow or 0) then w = nil end
   local text
   if w then
     text = string.format("%sx%d - %s|r %s", pending and "|cffff4040" or COLOR, w.count, FormatMoney(w.value), w.link or w.name)
@@ -365,6 +369,15 @@ local function CreateOptions()
   local c2 = Check("AutoDrop_Below2Pct", "Auto-drop below 2% of all bag junk value", "Destroy the worst slot only if it is worth less than 2% of all grey/white junk in your bags.")
   local c3 = Check("ShowPanel", "Show standalone panel", "Off by default when a LibDataBroker display (ChocolateBar, Titan...) is present.")
   c3:SetPoint("TOPLEFT", c2, "BOTTOMLEFT", 0, -20)
+  local showSlider = CreateFrame("Slider", "GotJunkOptionsShowWhen", optionsFrame, "OptionsSliderTemplate")
+  showSlider:SetPoint("TOPLEFT", c3, "BOTTOMLEFT", 8, -28)
+  showSlider:SetWidth(220); showSlider:SetMinMaxValues(0, 20); showSlider:SetValueStep(1); showSlider:SetObeyStepOnDrag(true)
+  _G[showSlider:GetName() .. "Low"]:SetText("0"); _G[showSlider:GetName() .. "High"]:SetText("20")
+  showSlider.Text = _G[showSlider:GetName() .. "Text"]
+  local function ShowSliderLabel(v) return "Show junk when fewer than " .. v .. " slots free (0 = never)" end
+  showSlider:SetScript("OnValueChanged", function(self, v) v = math.floor(v + 0.5); db.ShowWhenFreeBelow = v; self.Text:SetText(ShowSliderLabel(v)); GJ.Refresh() end)
+  showSlider.Update = function(self) self:SetValue(db.ShowWhenFreeBelow or 3); self.Text:SetText(ShowSliderLabel(db.ShowWhenFreeBelow or 3)) end
+  last = showSlider
   Check("Locked", "Lock panel position")
   local c5 = Check("MinimapHide", "Hide minimap button")
   c5:SetScript("OnClick", function(self) db.Minimap.hide = self:GetChecked() and true or false; GJ.OnOptionChanged("MinimapHide") end)
