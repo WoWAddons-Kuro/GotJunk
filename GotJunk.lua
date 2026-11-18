@@ -391,10 +391,11 @@ function GJ.Refresh()
   local w = GJ.Worst()
   local pending = GJ.AutoDrop_Pending()
   -- Display gate: the worst slot is only surfaced once bags are getting tight; the
-  -- tooltip/status keep the full list regardless. A preview window (login / hover)
-  -- overrides the gate so the player can see and move the panel.
+  -- tooltip/status keep the full list regardless. A preview window (login / hover) only
+  -- forces the *panel* visible (showing "no eligible junk"); it never promotes an
+  -- ineligible slot into the display.
   local previewing = GetTime() < (GJ.PreviewUntil or 0)
-  if w and not previewing and GJ.FreeSlots >= (db.ShowWhenFreeBelow or 0) then w = nil end
+  if w and GJ.FreeSlots >= (db.ShowWhenFreeBelow or 0) then w = nil end
   local text
   if w then
     text = string.format("%sx%d - %s|r %s", pending and "|cffff4040" or COLOR, w.count, FormatMoney(w.value), w.link or w.name)
@@ -408,7 +409,7 @@ function GJ.Refresh()
     if w or previewing or not db.AutoHide then
       panel.icon:SetTexture(w and w.icon or ADDON_ICON)
       panel.icon:SetDesaturated(not w)   -- grey bag when there is nothing to drop
-      panel.text:SetText(text or (COLOR .. "no junk to drop|r"))
+      panel.text:SetText(text or (COLOR .. "no eligible junk to drop|r"))
       local rowWidth = 16 + 5 + panel.text:GetStringWidth()   -- icon + gap + text
       local dotsWidth, dotsHeight = UpdateDots()
       local panelWidth = math.max(120, math.min(400, math.max(rowWidth + 20, dotsWidth)))
