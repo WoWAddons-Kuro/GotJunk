@@ -180,7 +180,7 @@ local function RenderBox(box)
     row.text:SetText((it.removed and "|cff808080" or "") .. (link or name or ("item:" .. it.id)) .. (it.removed and "  (removed)|r" or ""))
     -- right button
     if tier.key == "builtin" then
-      row.btnB:SetText(it.removed and "Restore" or "Remove")
+      row.btnB:SetText(it.removed and "Re-protect" or "Un-protect")
       row.btnB:SetScript("OnClick", function() if it.removed then GJ.ProtectRestoreBuiltin(it.id) else GJ.ProtectRemove(it.id, "builtin") end end)
       row.btnA:Hide()
     else
