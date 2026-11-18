@@ -748,7 +748,12 @@ function GJ.Refresh()
   end
   if db.ShowPanel then
     CreatePanel()
-    if w or previewing or not db.AutoHide then
+    -- Visibility: an eligible slot always shows. Otherwise the panel shows when auto-hide is
+    -- off, or during the login/hover preview. Auto-hide ON wins over the preview, EXCEPT while
+    -- the mouse is actually on the panel (so it does not vanish under the cursor).
+    local showEmpty = (not db.AutoHide) or hovering
+    if not db.AutoHide then showEmpty = showEmpty or previewing end
+    if w or showEmpty then
       panel.icon:SetTexture(w and w.icon or ADDON_ICON)
       panel.icon:SetDesaturated(not w)   -- grey bag when there is nothing to drop
       panel.text:SetText(text or (COLOR .. "no eligible junk to drop|r"))
