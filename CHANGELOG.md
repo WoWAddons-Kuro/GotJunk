@@ -7,3 +7,4 @@
 - Panel previews for 30s at login and for 30s after hovering it, even below the show threshold.
 - Bag occupancy strip: one dot per general-bag slot (bright = used, grey = free) above the junk row.
 - Food & water policy: never / keep N stacks per item (default 3) / low-level only.
+- 'Auto-hide panel when no eligible junk' checkbox (default on).

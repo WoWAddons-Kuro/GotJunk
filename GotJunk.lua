@@ -21,6 +21,7 @@ local DEFAULTS = {
   ShowWhenFreeBelow = 3,  -- display shows the worst slot only while free slots < this (0 = never)
   FoodWaterMode = "stacks", -- "never" | "stacks" (junk beyond the fullest N stacks per item) | "lowlevel"
   FoodWaterKeepStacks = 3,
+  AutoHide = true,          -- hide the panel when nothing is eligible/shown (off = always visible, handy for testing)
   AutoDrop_Below10c = false,
   AutoDrop_Below2Pct = false,
   ShowPanel = nil,      -- decided on first login: false if an LDB display host is present
@@ -404,7 +405,7 @@ function GJ.Refresh()
   end
   if db.ShowPanel then
     CreatePanel()
-    if w or previewing then
+    if w or previewing or not db.AutoHide then
       panel.icon:SetTexture(w and w.icon or ADDON_ICON)
       panel.text:SetText(text or (COLOR .. "no junk to drop|r"))
       local textWidth = panel.text:GetStringWidth() + 16 + 20
@@ -500,6 +501,7 @@ local function CreateOptions()
   showSlider:SetScript("OnValueChanged", function(self, v) v = math.floor(v + 0.5); db.ShowWhenFreeBelow = v; self.Text:SetText(ShowSliderLabel(v)); GJ.Refresh() end)
   showSlider.Update = function(self) self:SetValue(db.ShowWhenFreeBelow or 3); self.Text:SetText(ShowSliderLabel(db.ShowWhenFreeBelow or 3)) end
   last = showSlider
+  Check("AutoHide", "Auto-hide panel when no eligible junk", "Untick to keep the panel (and its bag dots) visible at all times.")
   Check("Locked", "Lock panel position")
   local c5 = Check("MinimapHide", "Hide minimap button")
   c5:SetScript("OnClick", function(self) db.Minimap.hide = self:GetChecked() and true or false; GJ.OnOptionChanged("MinimapHide") end)
