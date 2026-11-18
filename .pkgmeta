@@ -1,0 +1,13 @@
+package-as: GotJunk
+
+enable-nolib-creation: no
+enable-toc-creation: yes
+
+manual-changelog: CHANGELOG.md
+
+ignore:
+  - README.md
+  - SPEC.md
+  - .github
+  - .gitignore
+  - .pkgmeta
