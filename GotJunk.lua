@@ -520,6 +520,7 @@ end
 -- Panel tooltip: the ONLY code that builds it. Always a full teardown + rebuild so the
 -- tooltip can never show stale rows after a protect/drop. Nothing else appends to it.
 -- ---------------------------------------------------------------------------
+local OnTooltipShow   -- forward declaration; body is defined below (shared with the LDB object)
 function GJ.ShowPanelTooltip()
   if not panel then return end
   GJ.Refresh()                       -- data first (lifts the gate while hovering)
@@ -548,7 +549,7 @@ function GJ.RefreshTooltip()
   end)
 end
 
-local function OnTooltipShow(tt)
+OnTooltipShow = function(tt)
   tt:AddLine("GotJunk")
   if #GJ.JunkSlots == 0 then
     tt:AddLine("No junk in bags", 0.7, 0.7, 0.7)
@@ -701,7 +702,9 @@ local function CreatePanel()
   panel:SetScript("OnDragStop", function(self) self:StopMovingOrSizing(); SavePosition() end)
   panel:SetScript("OnClick", OnClick)
   panel:SetScript("OnEnter", function() GJ.StartPreview(); GJ.ShowPanelTooltip() end)
-  panel:SetScript("OnLeave", function() GJ.HidePanelTooltip(); GJ.Refresh() end)
+  -- OnLeave runs BEFORE the client updates mouse focus, so IsMouseOver() is still true inside
+  -- it; a synchronous Refresh would keep the hover row. Defer one frame so the gate re-applies.
+  panel:SetScript("OnLeave", function() GJ.HidePanelTooltip(); C_Timer.After(0, GJ.Refresh) end)
   RestorePosition()
   return panel
 end
