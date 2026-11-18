@@ -17,7 +17,7 @@ Classic Era and WoW Forever.
 
 - **LibDataBroker** data source `GotJunk` — shows up in ChocolateBar, Titan, Bazooka, ElvUI datatexts, etc.
 - **Standalone panel** — draggable one-row frame. On first login it is shown only if no LDB display is
-  detected; toggle any time with `/gj` or in options.
+  detected; toggle any time with `/gotjunk` or in options.
 - Minimap button (LibDBIcon), hideable.
 - Tooltip lists the 5 worst slots, total junk value, free slots and auto-drop status.
 
@@ -27,7 +27,7 @@ Classic Era and WoW Forever.
 | Right | options |
 | Shift-Right | protect the shown item (never offered again) |
 
-## Settings (`/gj options`)
+## Settings (`/gotjunk options`)
 
 **Auto-drop thresholds**
 - Slots to keep clear (default 1) — auto-drop is only considered while free slots are below this.
@@ -51,7 +51,7 @@ with no click cannot trigger it; when a drop is pending the display turns **red*
 
 ## Slash
 
-`/gotjunk`, `/gj` — toggle panel · `options` · `lock` · `reset` · `drop` · `scan` · `protect <itemlink|list>` · `status`
+`/gotjunk` — toggle panel · `options` · `lock` · `reset` · `drop` · `scan` · `protect <itemlink|list>` · `status`
 
 ## License
 

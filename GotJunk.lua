@@ -273,9 +273,13 @@ local function CreatePanel()
   panel:SetScript("OnDragStop", function(self) self:StopMovingOrSizing(); SavePosition() end)
   panel:SetScript("OnClick", OnClick)
   panel:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+    -- Anchor to the side of the panel with the most screen room so the tooltip never covers it.
+    local _, cy = self:GetCenter()
+    local screenH = UIParent:GetHeight()
+    local below = cy and cy > screenH / 2
+    GameTooltip:SetOwner(self, below and "ANCHOR_BOTTOM" or "ANCHOR_TOP")
     OnTooltipShow(GameTooltip)
-    if not db.Locked then GameTooltip:AddLine("Drag to move  (/gj lock)", 0.5, 0.5, 0.5) end
+    if not db.Locked then GameTooltip:AddLine("Drag to move  (/gotjunk lock)", 0.5, 0.5, 0.5) end
     GameTooltip:Show()
   end)
   panel:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -372,7 +376,7 @@ local function CreateOptions()
     for _, child in ipairs({ self:GetChildren() }) do if child.Update then child:Update() end end
     local n, names = 0, {}
     for id in pairs(db.Protect) do n = n + 1; local _, link = GetItemInfo(id); names[#names + 1] = link or tostring(id) end
-    prot:SetText(n == 0 and "Protected items: none (shift-right-click the display, or /gj protect <itemlink>)" or ("Protected items (" .. n .. "): " .. table.concat(names, "  ")))
+    prot:SetText(n == 0 and "Protected items: none (shift-right-click the display, or /gotjunk protect <itemlink>)" or ("Protected items (" .. n .. "): " .. table.concat(names, "  ")))
   end
   optionsFrame:SetScript("OnShow", optionsFrame.Update)
 
@@ -413,7 +417,7 @@ local function Slash(msg)
     if rest == "list" or rest == "" then
       local n = 0
       for id in pairs(db.Protect) do n = n + 1; local _, link = GetItemInfo(id); print("  " .. (link or tostring(id))) end
-      Print("%d protected item(s). Usage: /gj protect <itemlink|itemID>", n)
+      Print("%d protected item(s). Usage: /gotjunk protect <itemlink|itemID>", n)
     else
       local id = tonumber(rest) or tonumber(rest:match("item:(%d+)"))
       if id then GJ.ToggleProtect(id) else Print("could not read an item from '%s'", rest) end
@@ -424,7 +428,7 @@ local function Slash(msg)
       tostring(version), #GJ.JunkSlots, FormatMoney(GJ.Junk_TotalValue), GJ.FreeSlots, db.KeepClearSlots,
       tostring(db.AutoDrop_Below10c), tostring(db.AutoDrop_Below2Pct), tostring(GJ.AutoDrop_Pending()), tostring(db.ShowPanel))
   else
-    Print("/gj - toggle panel | options | lock | reset | drop | scan | protect [itemlink|list] | status")
+    Print("/gotjunk - toggle panel | options | lock | reset | drop | scan | protect [itemlink|list] | status")
   end
 end
 
@@ -449,7 +453,7 @@ f:RegisterEvent("PLAYER_LOGIN")
 f:SetScript("OnEvent", function(_, event, arg1)
   if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
     InitDB()
-    SLASH_GOTJUNK1, SLASH_GOTJUNK2 = "/gotjunk", "/gj"
+    SLASH_GOTJUNK1 = "/gotjunk"
     SlashCmdList.GOTJUNK = Slash
     SetupLDB()
     CreateOptions()

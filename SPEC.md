@@ -81,7 +81,7 @@ Trigger: loot-button `OnMouseDown` (hooked). Era: `LootButton1..4`. Forever/Main
 - [ ] Show standalone panel   [ ] Lock panel   [ ] Hide minimap button
 - Protected items list with a `Clear` button (text)
 
-## Slash `/gotjunk`, `/gj`
+## Slash `/gotjunk`
 `(none)` toggle panel · `options` · `lock` · `reset` (position) · `drop` (destroy worst slot — only
 works from a keybound macro/hardware event) · `protect [itemlink|itemID]` toggle · `protect list` · `status`.
 
