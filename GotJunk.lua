@@ -535,7 +535,7 @@ function GJ.ShowPanelTooltip()
 end
 
 function GJ.HidePanelTooltip()
-  if GameTooltip:IsOwned(panel) then GameTooltip:Hide() end
+  if panel and GameTooltip:IsOwned(panel) then GameTooltip:Hide() end
 end
 
 -- After any action (protect, drop) while the cursor is on the panel: rebuild from scratch.
