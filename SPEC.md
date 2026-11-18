@@ -189,7 +189,9 @@ GotJunkCharDB = { Protect = { [itemID] = true } }
 - [x] `BuiltinProtect.lua` seed (5 items) + TOC entries
 - [x] `ProtectUI.lua`: three list boxes, promote/demote/delete/un-protect/re-protect, Copy-list frame, add row
 - [x] Food & water: never / low-level radio + excess / low-level-buff / off-class-buff checkboxes, tooltip-based buff detection
+- [x] Auto-drop sized to incoming loot (`LootSlotsNeeded`, stack-merge aware) + worth-guard (`IncomingLoot_FloorValue`)
 - [ ] Owner supplies further built-in item IDs via Copy-list hand-off (ongoing)
+- [ ] Trial run with `KeepClearSlots = 0` to see whether loot-driven dropping removes the need for reserved space; if so, add the `Drop worst junk` keybinding for the auto-loot case
 
 ## Open questions / later
 - Keybinding `GotJunk: Drop worst junk` (cheap to add if auto-loot users want it).
