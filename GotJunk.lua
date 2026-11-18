@@ -460,7 +460,7 @@ f:SetScript("OnEvent", function(_, event, arg1)
   elseif event == "PLAYER_LOGIN" then
     if db.ShowPanel == nil then
       db.ShowPanel = not HasLDBHost()
-      Print("first run: standalone panel %s (%s). /gj to toggle, /gj options for settings.", db.ShowPanel and "shown" or "hidden", db.ShowPanel and "no LDB display found" or "LDB display found")
+      Print("first run: standalone panel %s (%s). /gotjunk to toggle, /gotjunk options for settings.", db.ShowPanel and "shown" or "hidden", db.ShowPanel and "no LDB display found" or "LDB display found")
     end
     HookLootButtons()
     f:RegisterEvent("BAG_UPDATE_DELAYED")
