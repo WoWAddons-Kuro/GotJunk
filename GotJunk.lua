@@ -295,16 +295,53 @@ GJ.LootSlotsNeeded = LootSlotsNeeded
 --   deficit = (KeepClearSlots + lootSlotsNeeded) - FreeSlots
 -- Each candidate must pass the thresholds; we take the worst-first prefix of the junk list.
 -- lootSlotsNeeded is only counted when the loot window is open (the loot-click path).
+-- Value of the incoming loot entries that need NEW slots, so a drop never trades better junk
+-- for worse. Returns the lowest full-stack value among those entries (nil if none / unknown).
+-- An entry that is *not* junk by our own rules (green+, protected, kept food...) is treated as
+-- worth keeping: it returns math.huge so nothing blocks freeing space for it.
+local function IncomingLoot_FloorValue()
+  if not GetNumLootItems then return nil end
+  local n = GetNumLootItems() or 0
+  local floor
+  for i = 1, n do
+    local _, _, quantity, _, _, _, _, _, _, isCoin = GetLootSlotInfo(i)
+    if not isCoin then
+      local link = GetLootSlotLink(i)
+      local itemID = link and tonumber(link:match("item:(%d+)"))
+      if itemID then
+        local _, _, quality, _, _, _, _, maxStack, _, _, price, classID = GetItemInfo(itemID)
+        local isJunkish = quality and quality <= 1 and (price or 0) > 0 and classID ~= QUEST_CLASS_ID and not GJ.IsProtected(itemID)
+        local v = isJunkish and (price * math.max(1, maxStack or 1)) or math.huge
+        if not floor or v < floor then floor = v end
+      end
+    end
+  end
+  return floor
+end
+GJ.IncomingLoot_FloorValue = IncomingLoot_FloorValue
+
+-- How many junk slots auto-drop wants to destroy right now, and the ordered list of them.
+--   deficit = (KeepClearSlots + lootSlotsNeeded) - FreeSlots
+-- Each candidate must pass the thresholds; we take the worst-first prefix of the junk list.
+-- lootSlotsNeeded is only counted when the loot window is open (the loot-click path).
+-- Worth-guard (loot path only): a bag slot is only destroyed if its full-stack value is
+-- strictly LESS than the cheapest junk-ish item in the loot. Otherwise the plan stops there
+-- and the pickup is allowed to fail ("Inventory is full") rather than lose ground.
+-- Returns: count, plan, deficit, blockedBy (the first slot refused by the worth-guard, or nil)
 function GJ.AutoDrop_Plan(includeLoot)
   local wantFree = (db.KeepClearSlots or 0) + (includeLoot and LootSlotsNeeded() or 0)
   local deficit = wantFree - GJ.FreeSlots
-  if deficit <= 0 then return 0, {} end
+  if deficit <= 0 then return 0, {}, 0 end
+  local floorValue = includeLoot and IncomingLoot_FloorValue() or nil
   local plan = {}
+  local blockedBy
   for _, j in ipairs(GJ.JunkSlots) do
     if #plan >= deficit then break end
-    if SlotPassesThresholds(j) then plan[#plan + 1] = j else break end  -- list is worst-first; stop at the first keeper
+    if not SlotPassesThresholds(j) then break end            -- worst-first list; first keeper ends it
+    if floorValue and not (j.maxStackValue < floorValue) then blockedBy = j; break end
+    plan[#plan + 1] = j
   end
-  return #plan, plan, deficit
+  return #plan, plan, deficit, blockedBy
 end
 
 -- Is the auto-drop condition met right now? (used for the red "pending" colouring)
@@ -409,7 +446,13 @@ local function OnLootMouseDown()
   -- Size the drop to the loot: deficit = keep-clear + slots the loot window needs - free.
   -- Try to destroy that many; Forever allows one DeleteCursorItem per hardware event, Era
   -- allows several, so loop until the plan is done or a delete stops working.
-  local n, plan, deficit = GJ.AutoDrop_Plan(true)
+  local n, plan, deficit, blockedBy = GJ.AutoDrop_Plan(true)
+  if n == 0 and blockedBy then
+    -- Worth-guard: the cheapest incoming item is worth no more than our cheapest junk.
+    -- Don't lose ground; let the pickup fail and say why.
+    Print("|cffffb000not freeing space|r - incoming loot is worth no more than %s (%s full-stack)", blockedBy.link or blockedBy.name, FormatMoney(blockedBy.maxStackValue))
+    return
+  end
   if n == 0 then return end
   local dropped = 0
   for _, j in ipairs(plan) do
@@ -418,7 +461,9 @@ local function OnLootMouseDown()
   end
   if dropped > 0 then
     GJ.Scan()
-    if deficit > dropped then
+    if blockedBy and deficit > dropped then
+      Print("|cffffb000stopped at|r %s - the rest of the loot is not worth more than it", blockedBy.link or blockedBy.name)
+    elseif deficit > dropped then
       Print("|cffffb000still %d slot(s) short|r - click the loot again to drop more", deficit - dropped)
     end
   end
