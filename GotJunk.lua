@@ -57,20 +57,22 @@ end
 -- ---------------------------------------------------------------------------
 -- scan: build the ranked junk list
 -- ---------------------------------------------------------------------------
-GJ.JunkSlots = {}        -- ascending by value: { bag, slot, itemID, name, link, icon, count, price, value, quality }
+GJ.JunkSlots = {}        -- ascending by maxStackValue (price * maxStack):
+                         -- { bag, slot, itemID, name, link, icon, count, price, value, quality, maxStack, maxStackValue }
 GJ.Junk_TotalValue = 0
 GJ.FreeSlots = 0
 GJ.Scan_Incomplete = false  -- some item info was not cached; rescan on GET_ITEM_INFO_RECEIVED
 
 local function IsJunkCandidate(itemID, noValue, containerQuality)
   if not itemID or noValue or itemID == HEARTHSTONE_ID or db.Protect[itemID] then return false end
-  local name, link, quality, _, _, _, _, _, _, icon, price, classID = GetItemInfo(itemID)
+  local name, link, quality, _, _, _, _, maxStack, _, icon, price, classID = GetItemInfo(itemID)
   if not name then return nil end  -- not cached yet
   quality = quality or containerQuality
   if quality == nil or quality > 1 then return false end
   if not price or price <= 0 then return false end
   if classID == QUEST_CLASS_ID then return false end
-  return true, name, link, quality, icon, price
+  if not maxStack or maxStack < 1 then maxStack = 1 end
+  return true, name, link, quality, icon, price, maxStack
 end
 
 function GJ.Scan()
@@ -83,20 +85,22 @@ function GJ.Scan()
       for slot = 1, n do
         local itemID, count, locked, noValue, cq, tex = GetSlotInfo(bag, slot)
         if itemID and not locked then
-          local ok, name, link, quality, icon, price = IsJunkCandidate(itemID, noValue, cq)
+          local ok, name, link, quality, icon, price, maxStack = IsJunkCandidate(itemID, noValue, cq)
           if ok == nil then incomplete = true
           elseif ok then
             local value = price * (count or 1)
             total = total + value
             list[#list + 1] = { bag = bag, slot = slot, itemID = itemID, name = name, link = link,
-              icon = icon or tex, count = count or 1, price = price, value = value, quality = quality }
+              icon = icon or tex, count = count or 1, price = price, value = value, quality = quality,
+              maxStack = maxStack, maxStackValue = price * maxStack }
           end
         end
       end
     end
   end
+  -- Rank by what the slot is worth when FULL: a slot of 1x 5c pelt (max 1) beats 3x 1c water (max 20 = 20c).
   table.sort(list, function(a, b)
-    if a.value ~= b.value then return a.value < b.value end
+    if a.maxStackValue ~= b.maxStackValue then return a.maxStackValue < b.maxStackValue end
     if a.itemID ~= b.itemID then return a.itemID < b.itemID end
     if a.bag ~= b.bag then return a.bag < b.bag end
     return a.slot < b.slot
@@ -113,8 +117,8 @@ function GJ.AutoDrop_Pending()
   if not w then return false end
   if GJ.FreeSlots >= (db.KeepClearSlots or 0) then return false end
   if not (db.AutoDrop_Below10c or db.AutoDrop_Below2Pct) then return false end
-  if db.AutoDrop_Below10c and not (w.value < 10) then return false end
-  if db.AutoDrop_Below2Pct and not (w.value < 0.02 * GJ.Junk_TotalValue) then return false end
+  if db.AutoDrop_Below10c and not (w.maxStackValue < 10) then return false end
+  if db.AutoDrop_Below2Pct and not (w.maxStackValue < 0.02 * GJ.Junk_TotalValue) then return false end
   return true
 end
 
@@ -192,9 +196,9 @@ local function OnTooltipShow(tt)
   else
     for i = 1, math.min(5, #GJ.JunkSlots) do
       local j = GJ.JunkSlots[i]
-      tt:AddDoubleLine(string.format("|T%s:14|t %s x%d", tostring(j.icon), j.link or j.name, j.count), FormatMoney(j.value), 1, 1, 1, 1, 0.82, 0)
+      tt:AddDoubleLine(string.format("|T%s:14|t %s x%d/%d", tostring(j.icon), j.link or j.name, j.count, j.maxStack), string.format("%s |cff808080(%s max)|r", FormatMoney(j.value), FormatMoney(j.maxStackValue)), 1, 1, 1, 1, 0.82, 0)
     end
-    tt:AddDoubleLine(string.format("%d junk slots total", #GJ.JunkSlots), FormatMoney(GJ.Junk_TotalValue), 0.7, 0.7, 0.7, 0.7, 0.7, 0.7)
+    tt:AddDoubleLine(string.format("%d junk slots total (ranked by full-stack value)", #GJ.JunkSlots), FormatMoney(GJ.Junk_TotalValue), 0.7, 0.7, 0.7, 0.7, 0.7, 0.7)
   end
   tt:AddDoubleLine("Free slots", tostring(GJ.FreeSlots) .. " (keep " .. tostring(db.KeepClearSlots) .. " clear)", 0.7, 0.7, 0.7, 1, 1, 1)
   if db.AutoDrop_Below10c or db.AutoDrop_Below2Pct then

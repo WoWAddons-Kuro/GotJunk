@@ -36,7 +36,7 @@ A bag slot is a **JunkSlot** when all of:
 | not Hearthstone (6948) | hard-coded safety |
 | not locked (`isLocked` false) | container info |
 
-`JunkSlot_Value = sellPrice * stackCount` (copper). Candidates are sorted ascending by value,
+`JunkSlot_Value = sellPrice * stackCount` (current, shown). **Ranking and thresholds use `JunkSlot_MaxStackValue = sellPrice * maxStack`** (what the slot is worth when full — a slot holding 1x 5c pelt (max 1) is less worth keeping than 3x 1c water (max 20 = 20c)). Sorted ascending by MaxStackValue,
 ties by itemID then bag/slot (deterministic). `Junk_TotalValue = Î£ JunkSlot_Value`.
 Items whose info is not cached yet are skipped and a rescan happens on `GET_ITEM_INFO_RECEIVED`.
 
@@ -48,8 +48,8 @@ general-purpose bags (`GetContainerNumFreeSlots` bagFamily == 0).
 | key | default | meaning |
 |---|---|---|
 | `KeepClearSlots` | 1 | auto-drop is considered only while `freeSlots < KeepClearSlots` |
-| `AutoDrop_Below10c` | false | slot value must be `< 10` copper |
-| `AutoDrop_Below2Pct` | false | slot value must be `< 0.02 * Junk_TotalValue` |
+| `AutoDrop_Below10c` | false | full-stack value must be `< 10` copper |
+| `AutoDrop_Below2Pct` | false | full-stack value must be `< 0.02 * Junk_TotalValue` |
 
 `AutoDrop_Pending(worstSlot)` = `freeSlots < KeepClearSlots` **and** at least one checkbox is on
 **and** every ticked checkbox passes (AND, Q4 answer B). Only the single worst slot is considered.
