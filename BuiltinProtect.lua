@@ -6,5 +6,10 @@
 local _, GJ = ...
 
 GJ.BuiltinProtect = {
-  -- (empty seed; populate from the Protected items > Built-in > Copy list hand-off)
+  -- tools / long-lived utility items a levelling character wants to keep
+  [1191] = true,  -- Bag of Marbles
+  [1434] = true,  -- Glowing Wax Stick
+  [6256] = true,  -- Fishing Pole
+  [6529] = true,  -- Shiny Bauble
+  [7005] = true,  -- Skinning Knife
 }
