@@ -58,9 +58,11 @@ local NUM_BAGS = NUM_TOTAL_EQUIPPED_BAG_SLOTS or NUM_BAG_SLOTS or 4
 local function FormatMoney(copper)
   copper = math.floor(copper or 0)
   local g, s, c = math.floor(copper / 10000), math.floor(copper / 100) % 100, copper % 100
-  if g > 0 then return string.format("%dg %ds %dc", g, s, c) end
-  if s > 0 then return string.format("%ds %dc", s, c) end
-  return string.format("%dc", c)
+  -- coin colours: gold yellow, silver white, copper grey (Blizzard's money frame palette)
+  local G, S, C = "|cffffd700%dg|r", "|cffe6e6e6%ds|r", "|cff9d9d9d%dc|r"
+  if g > 0 then return string.format(G .. " " .. S .. " " .. C, g, s, c) end
+  if s > 0 then return string.format(S .. " " .. C, s, c) end
+  return string.format(C, c)
 end
 
 -- ---------------------------------------------------------------------------
