@@ -8,6 +8,8 @@ An ever-present one-liner showing the **least valuable grey/white slot** in your
 
 **Left-click it to destroy that slot.** That's the whole addon.
 
+![GotJunk panel and tooltip](Assets/GotJunk_Screenshot.jpg)
+
 Optionally it does it for you: tick an *auto-drop threshold* and, when fewer than N bag slots are free,
 your next click on a loot item also destroys the worst junk slot — so you never see "Inventory is full".
 
