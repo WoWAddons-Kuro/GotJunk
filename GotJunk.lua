@@ -522,17 +522,29 @@ end
 -- ---------------------------------------------------------------------------
 local OnTooltipShow   -- forward declaration; body is defined below (shared with the LDB object)
 function GJ.ShowPanelTooltip()
-  if not panel then return end
+  local dbg = GJ.TipDebug
+  if not panel then if dbg then Print("tipdebug: panel is nil") end return end
   GJ.Refresh()                       -- data first (lifts the gate while hovering)
-  GameTooltip:Hide()                 -- teardown: drops owner + every line
-  GameTooltip:ClearLines()
-  -- Anchor to the side of the panel with the most screen room so the tooltip never covers it.
-  local _, cy = panel:GetCenter()
-  local below = cy and cy > UIParent:GetHeight() / 2
-  GameTooltip:SetOwner(panel, below and "ANCHOR_BOTTOM" or "ANCHOR_TOP")
-  OnTooltipShow(GameTooltip)
-  if not db.Locked then GameTooltip:AddLine("Drag to move  (/gotjunk lock)", 0.5, 0.5, 0.5) end
-  GameTooltip:Show()
+  if dbg then
+    Print("tipdebug: panel visible=%s mouseOver=%s  junkSlots=%d  OnTooltipShow=%s",
+      tostring(panel:IsVisible()), tostring(panel:IsMouseOver()), #GJ.JunkSlots, tostring(OnTooltipShow))
+  end
+  -- Build on a throwaway: if construction errors, pcall reports it instead of a silent no-tooltip.
+  local ok, err = pcall(function()
+    GameTooltip:Hide()
+    GameTooltip:ClearLines()
+    local _, cy = panel:GetCenter()
+    local below = cy and cy > UIParent:GetHeight() / 2
+    GameTooltip:SetOwner(panel, below and "ANCHOR_BOTTOM" or "ANCHOR_TOP")
+    OnTooltipShow(GameTooltip)
+    if not db.Locked then GameTooltip:AddLine("Drag to move  (/gotjunk lock)", 0.5, 0.5, 0.5) end
+    GameTooltip:Show()
+  end)
+  if dbg or not ok then
+    Print("tipdebug: build ok=%s err=%s  owner=%s shown=%s lines=%d",
+      tostring(ok), tostring(err), tostring(GameTooltip:GetOwner() and GameTooltip:GetOwner():GetName() or GameTooltip:GetOwner()),
+      tostring(GameTooltip:IsShown()), GameTooltip:NumLines())
+  end
 end
 
 function GJ.HidePanelTooltip()
@@ -961,6 +973,7 @@ local function Slash(msg)
   elseif cmd == "reset" then db.Position = nil; if panel then RestorePosition() end; Print("panel position reset")
   elseif cmd == "drop" then if not GJ.DropWorst("slash") then Print("nothing dropped (needs a hardware event, e.g. a keybound macro)") end
   elseif cmd == "scan" then GJ.Scan(); Print("%d junk slots, total %s, %d free slots", #GJ.JunkSlots, FormatMoney(GJ.Junk_TotalValue), GJ.FreeSlots)
+  elseif cmd == "tipdebug" then GJ.TipDebug = not GJ.TipDebug; Print("tooltip debug %s - hover the panel and read chat", GJ.TipDebug and "ON" or "off")
   elseif cmd == "protect" then
     local sub, arg = rest:match("^(%S*)%s*(.-)$")
     if sub == "list" or sub == "" then
