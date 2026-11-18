@@ -19,8 +19,11 @@ local COLOR = "|cff9d9d9d"   -- poor-quality grey for the prefix
 local DEFAULTS = {
   KeepClearSlots = 1,
   ShowWhenFreeBelow = 3,  -- display shows the worst slot only while free slots < this (0 = never)
-  FoodWaterMode = "stacks", -- "never" | "stacks" (junk beyond the fullest N stacks per item) | "lowlevel"
-  FoodWaterKeepStacks = 3,
+  FoodWaterMode = "lowlevel",            -- "never" | "lowlevel" (junk when required level is 10+ below yours)
+  FoodWater_ExcessNonBuff = false,       -- level-appropriate non-buff food/water beyond N stacks is junk
+  FoodWaterKeepStacks = 3,               -- N for the excess rule
+  FoodWater_LowLevelBuffEligible = true, -- Well Fed food that is low-level is junk
+  FoodWater_OffClassBuffEligible = false,-- Well Fed food whose stats do nothing for this class is junk
   AutoHide = false,         -- hide the panel when nothing is eligible/shown (default off: always visible)
   Style = "classic",        -- "classic" rounded tooltip border | "flat" modern
   AutoDrop_Below10c = false,
@@ -79,6 +82,65 @@ GJ.FreeSlots = 0
 GJ.Occupancy = {}         -- array over general-bag slots: true occupied / false free (drives the dot strip)
 GJ.Scan_Incomplete = false  -- some item info was not cached; rescan on GET_ITEM_INFO_RECEIVED
 
+-- Buff-food detection. GetItemInfo cannot tell food that grants Well Fed from plain food, so
+-- scan the item's tooltip once for a "well fed" line and remember the stats it names. The
+-- profile also decides "off-class": the buff names at least one stat and none suit this class.
+local scanTip
+local foodProfileCache = {}
+local FOOD_STAT_WORDS = { "strength", "agility", "stamina", "intellect", "spirit", "mana", "health" }
+-- Stats a class gets real use from. Stamina / health are universal and never count as off-class.
+local CLASS_USEFUL_STATS = {
+  WARRIOR = { strength = true, agility = true },
+  PALADIN = { strength = true, intellect = true, spirit = true, mana = true },
+  HUNTER  = { agility = true, intellect = true, mana = true },
+  ROGUE   = { agility = true, strength = true },
+  PRIEST  = { intellect = true, spirit = true, mana = true },
+  SHAMAN  = { intellect = true, strength = true, agility = true, spirit = true, mana = true },
+  MAGE    = { intellect = true, spirit = true, mana = true },
+  WARLOCK = { intellect = true, spirit = true, mana = true },
+  DRUID   = { intellect = true, spirit = true, agility = true, strength = true, mana = true },
+}
+
+-- Returns { buff = bool, stats = {name=true}, offClass = bool }, or nil if the tooltip had no
+-- data yet (caller treats as "not cached" and rescans on GET_ITEM_INFO_RECEIVED).
+function GJ.FoodProfile(itemID)
+  local p = foodProfileCache[itemID]
+  if p then return p end
+  if not scanTip then
+    scanTip = CreateFrame("GameTooltip", "GotJunkScanTip", nil, "GameTooltipTemplate")
+    scanTip:SetOwner(UIParent, "ANCHOR_NONE")
+  end
+  scanTip:ClearLines()
+  if scanTip.SetItemByID then scanTip:SetItemByID(itemID) else scanTip:SetHyperlink("item:" .. itemID) end
+  if scanTip:NumLines() == 0 then return nil end
+  p = { buff = false, stats = {}, offClass = false }
+  for i = 1, scanTip:NumLines() do
+    local fs = _G["GotJunkScanTipTextLeft" .. i]
+    local text = fs and fs:GetText()
+    if text then
+      local lower = text:lower()
+      if lower:find("well fed", 1, true) then
+        p.buff = true
+        for _, s in ipairs(FOOD_STAT_WORDS) do if lower:find(s, 1, true) then p.stats[s] = true end end
+      end
+    end
+  end
+  if p.buff then
+    local _, class = UnitClass("player")
+    local useful = CLASS_USEFUL_STATS[class] or {}
+    local anyNamed, anyUseful = false, false
+    for s in pairs(p.stats) do
+      if s ~= "stamina" and s ~= "health" then
+        anyNamed = true
+        if useful[s] then anyUseful = true end
+      end
+    end
+    p.offClass = anyNamed and not anyUseful
+  end
+  foodProfileCache[itemID] = p
+  return p
+end
+
 local function IsJunkCandidate(itemID, noValue, containerQuality)
   if not itemID or noValue or itemID == HEARTHSTONE_ID or GJ.IsProtected(itemID) then return false end
   local name, link, quality, _, minLevel, _, _, maxStack, _, icon, price, classID, subclassID = GetItemInfo(itemID)
@@ -95,6 +157,7 @@ end
 function GJ.Scan()
   local list, total, free, incomplete = {}, 0, 0, false
   local occupancy = {}   -- ordered per bag slot: true = occupied, false = free (general bags only)
+  local playerLevel = UnitLevel("player") or 1
   for bag = 0, NUM_BAGS do
     local n = GetContainerNumSlots(bag) or 0
     if n > 0 then
@@ -109,44 +172,57 @@ function GJ.Scan()
           if ok == nil then incomplete = true
           elseif ok then
             local value = price * (count or 1)
+            local food = isFoodWater and GJ.FoodProfile(itemID) or nil
+            if isFoodWater and not food then incomplete = true end   -- tooltip not ready; rescan later
             list[#list + 1] = { bag = bag, slot = slot, itemID = itemID, name = name, link = link,
               icon = icon or tex, count = count or 1, price = price, value = value, quality = quality,
               maxStack = maxStack, maxStackValue = price * maxStack,
-              isFoodWater = isFoodWater, minLevel = minLevel }
+              isFoodWater = isFoodWater, minLevel = minLevel, food = food,
+              isLowLevel = playerLevel >= (minLevel or 1) + FOOD_TIER_SPAN }
           end
         end
       end
     end
   end
-  -- Food & water policy. Candidates flagged isFoodWater are filtered here, after the full
-  -- pass, because the "stacks" mode needs to know how many slots of each item exist.
-  local mode = db.FoodWaterMode or "stacks"
+  -- Food & water policy (SPEC "Food and water"). Applied after the full pass because the
+  -- excess rule needs every slot of an item.
+  --   never    : no food/water is ever junk.
+  --   lowlevel : non-buff -> junk when low-level, or when an excess stack (if enabled);
+  --              buff     -> junk when low-level (if enabled) or off-class (if enabled).
+  local mode = db.FoodWaterMode or "lowlevel"
+  local kept = {}
   if mode == "never" then
-    local kept = {}
     for _, j in ipairs(list) do if not j.isFoodWater then kept[#kept + 1] = j end end
-    list = kept
-  elseif mode == "stacks" then
-    local keepN = db.FoodWaterKeepStacks or 3
-    local byItem = {}
+  else
+    -- Excess: per itemID, among level-appropriate NON-buff food/water, keep the fullest N stacks.
+    local excess = {}
+    if db.FoodWater_ExcessNonBuff then
+      local keepN = db.FoodWaterKeepStacks or 3
+      local byItem = {}
+      for _, j in ipairs(list) do
+        if j.isFoodWater and j.food and not j.food.buff and not j.isLowLevel then
+          byItem[j.itemID] = byItem[j.itemID] or {}; table.insert(byItem[j.itemID], j)
+        end
+      end
+      for _, slots in pairs(byItem) do
+        table.sort(slots, function(a, b) return a.count > b.count end)
+        for i = keepN + 1, #slots do excess[slots[i]] = true end
+      end
+    end
     for _, j in ipairs(list) do
-      if j.isFoodWater then byItem[j.itemID] = byItem[j.itemID] or {}; table.insert(byItem[j.itemID], j) end
+      local junk
+      if not j.isFoodWater then junk = true
+      elseif not j.food then junk = false                        -- profile unknown yet: be safe
+      elseif j.food.buff then
+        junk = (j.isLowLevel and db.FoodWater_LowLevelBuffEligible)
+            or (j.food.offClass and db.FoodWater_OffClassBuffEligible)
+      else
+        junk = j.isLowLevel or excess[j]
+      end
+      if junk then kept[#kept + 1] = j end
     end
-    local drop = {}
-    for _, slots in pairs(byItem) do
-      table.sort(slots, function(a, b) return a.count > b.count end)  -- keep the fullest stacks
-      for i = keepN + 1, #slots do drop[slots[i]] = true end
-    end
-    local kept = {}
-    for _, j in ipairs(list) do if not j.isFoodWater or drop[j] then kept[#kept + 1] = j end end
-    list = kept
-  elseif mode == "lowlevel" then
-    local playerLevel = UnitLevel("player") or 1
-    local kept = {}
-    for _, j in ipairs(list) do
-      if not j.isFoodWater or playerLevel >= (j.minLevel or 1) + FOOD_TIER_SPAN then kept[#kept + 1] = j end
-    end
-    list = kept
   end
+  list = kept
   for _, j in ipairs(list) do total = total + j.value end
   -- Rank by what the slot is worth when FULL: a slot of 1x 5c pelt (max 1) beats 3x 1c water (max 20 = 20c).
   table.sort(list, function(a, b)
@@ -649,10 +725,12 @@ local function CreateOptions()
     return fw:Add(r, 16, -6, 0)
   end
   Radio("never", "Never junk food or water")
-  Radio("stacks", "Only junk food and water beyond the fullest N stacks of each item")
   Radio("lowlevel", "Only junk low-level food and water (required level 10+ below yours)", "Vendor food/water tiers unlock every ~10 levels; once the next tier is available the old one is junk.")
+  fw:Add(Check(fw, "FoodWater_ExcessNonBuff", "Junk usable excess non-buff food/water", "Among food and water that is still level-appropriate and grants no Well Fed buff, keep the fullest N stacks of each item; any further stacks are junk."), 26, -10)
   fw:Add(Slider(fw, "GotJunkOptionsFoodStacks", "FoodWaterKeepStacks", 3, 0, 10,
-    function(v) return "Stacks of each food/water to keep: " .. v end, GJ.Scan), 44, -12)
+    function(v) return "Stacks to keep: " .. v end, GJ.Scan), 44, -2, 24)
+  fw:Add(Check(fw, "FoodWater_LowLevelBuffEligible", "Low-level buff food is junk eligible", "Well Fed food whose required level is 10+ below yours."), 26, -8, -24)
+  fw:Add(Check(fw, "FoodWater_OffClassBuffEligible", "Off-class buff food is junk eligible", "Well Fed food whose stats do nothing for your class (e.g. Strength food on a Mage). Stamina-only food is never off-class."), 26)
   fw:Finish()
 
   -- Section: Protected items (built in ProtectUI.lua; returns the frame that ends the layout)
@@ -702,7 +780,7 @@ function GJ.OnOptionChanged(key)
   if key == "MinimapHide" and DBIcon then
     if db.Minimap.hide then DBIcon:Hide("GotJunk") else DBIcon:Show("GotJunk") end
   end
-  GJ.Refresh()
+  if key:find("^FoodWater") then GJ.Scan() else GJ.Refresh() end
 end
 
 function GJ.OpenOptions()
@@ -767,6 +845,8 @@ local function InitDB()
     end
   end
   GJ.db = db
+  -- migration: the old "stacks" radio became the excess checkbox under the "lowlevel" radio
+  if db.FoodWaterMode == "stacks" then db.FoodWaterMode = "lowlevel"; db.FoodWater_ExcessNonBuff = true end
 end
 
 local f = CreateFrame("Frame")

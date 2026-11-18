@@ -49,8 +49,7 @@ general-purpose bags (`GetContainerNumFreeSlots` bagFamily == 0).
 |---|---|---|
 | `AutoHide` | false | hide the panel when nothing is shown; off = panel always visible |
 | `ShowWhenFreeBelow` | 3 | panel/LDB show the worst slot only while `freeSlots < ShowWhenFreeBelow` (0 = never); tooltip always lists everything |
-| `FoodWaterMode` | `stacks` | `never` = food/drink (classID 0, subclass 5) is never junk; `stacks` = per item, keep the fullest `FoodWaterKeepStacks` slots, the rest are junk; `lowlevel` = junk only when `playerLevel >= minLevel + 10` (vendor tiers unlock at req. level 1/5/15/25/35/45/55, so 10 levels past the requirement a better tier exists — no mapping table needed) |
-| `FoodWaterKeepStacks` | 3 | used by `stacks` mode |
+| `FoodWaterMode` | `lowlevel` | `never` = food/drink (classID 0, subclass 5) is never junk; `lowlevel` = the rules below apply |`n| `FoodWater_ExcessNonBuff` | false | level-appropriate **non-buff** food/water: per item keep the fullest `FoodWaterKeepStacks` slots, the rest are junk |`n| `FoodWaterKeepStacks` | 3 | N for the excess rule |`n| `FoodWater_LowLevelBuffEligible` | true | Well Fed food whose `minLevel + 10 <= playerLevel` is junk |`n| `FoodWater_OffClassBuffEligible` | false | Well Fed food naming a stat and none of them useful to the class (stamina/health never count) is junk |`n`nBuff detection: `GJ.FoodProfile(itemID)` scans a hidden `GameTooltip` once per item for a "well fed" line and records which stat words appear; cached. Non-buff food/water is junk when low-level (`minLevel + 10 <= playerLevel`) or an excess stack.
 | `KeepClearSlots` | 1 | auto-drop is considered only while `freeSlots < KeepClearSlots` |
 | `AutoDrop_Below10c` | false | full-stack value must be `< 10` copper |
 | `AutoDrop_Below2Pct` | false | full-stack value must be `< 0.02 * Junk_TotalValue` |
