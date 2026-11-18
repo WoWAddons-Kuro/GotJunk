@@ -184,14 +184,18 @@ GotJunkCharDB = { Protect = { [itemID] = true } }
 - [x] `GotJunk.lua`: scan, ranking, delete, loot hook, LDB, panel, options, slash
 - [x] README / CHANGELOG / PROJECT_STRUCTURE entry, initial commit
 - [x] Full-stack-value ranking, ShowWhenFreeBelow gate, preview window, occupancy strip
-- [ ] In-game verification of the Forever loot-button hook (`LootFrame.ScrollBox` item frames)
+- [x] In-game verification on Forever (1.60.1): display, tooltip rebuild, protect/drop all confirmed working
 - [x] Protected lists v2: DB model (`GotJunkCharDB`, `UsePerCharacter`, `BuiltinRemoved`), `GJ.IsProtected`
 - [x] `BuiltinProtect.lua` seed (5 items) + TOC entries
 - [x] `ProtectUI.lua`: three list boxes, promote/demote/delete/un-protect/re-protect, Copy-list frame, add row
 - [x] Food & water: never / low-level radio + excess / low-level-buff / off-class-buff checkboxes, tooltip-based buff detection
 - [x] Auto-drop sized to incoming loot (`LootSlotsNeeded`, stack-merge aware) + worth-guard (`IncomingLoot_FloorValue`)
-- [ ] Owner supplies further built-in item IDs via Copy-list hand-off (ongoing)
-- [ ] Trial run with `KeepClearSlots = 0` to see whether loot-driven dropping removes the need for reserved space; if so, add the `Drop worst junk` keybinding for the auto-loot case
+- [x] **Shippable** (owner sign-off, 2026-11-18). Release via `cmd\release.cmd`.
+
+## After v1
+- Owner supplies further built-in item IDs via Copy-list hand-off (ongoing).
+- Trial `KeepClearSlots = 0`: if loot-sized dropping makes the reserve unnecessary, add a `Drop worst junk` keybinding for the auto-loot case.
+- Lesson logged: two shipping bugs were Lua declaration-order errors (`local` used above its declaration binds a global). Keep every file's `local` state declarations at the top of the file, above all functions.
 
 ## Open questions / later
 - Keybinding `GotJunk: Drop worst junk` (cheap to add if auto-loot users want it).
