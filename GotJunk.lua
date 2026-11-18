@@ -229,7 +229,14 @@ local ldbObject
 
 local function OnClick(_, button)
   if button == "RightButton" then
-    if IsShiftKeyDown() then local w = GJ.Worst(); if w then GJ.ToggleProtect(w.itemID) end
+    if IsShiftKeyDown() then
+      local w = GJ.Worst()
+      if w then GJ.ToggleProtect(w.itemID) end
+      -- Re-render the tooltip in place so the new ranking is visible without re-hovering.
+      if panel and GameTooltip:IsOwned(panel) then
+        local onEnter = panel:GetScript("OnEnter")
+        if onEnter then onEnter(panel) end
+      end
     else GJ.OpenOptions() end
   else
     GJ.DropWorst()
