@@ -674,6 +674,14 @@ function GJ.StartPreview(seconds)
   GJ.Refresh()
 end
 
+-- Cancel the preview so a setting change (auto-hide, show panel) is felt instantly instead of
+-- appearing to do nothing for up to 30s.
+function GJ.CancelPreview()
+  GJ.PreviewUntil = 0
+  if previewTimer then previewTimer:Cancel(); previewTimer = nil end
+  GJ.Refresh()
+end
+
 -- Two looks for the panel. "classic" = Blizzard tooltip border; "flat" = solid dark fill with
 -- a crisp 1px edge, no tiling art.
 local PANEL_STYLES = {
@@ -748,12 +756,10 @@ function GJ.Refresh()
   end
   if db.ShowPanel then
     CreatePanel()
-    -- Visibility: an eligible slot always shows. Otherwise the panel shows when auto-hide is
-    -- off, or during the login/hover preview. Auto-hide ON wins over the preview, EXCEPT while
-    -- the mouse is actually on the panel (so it does not vanish under the cursor).
-    local showEmpty = (not db.AutoHide) or hovering
-    if not db.AutoHide then showEmpty = showEmpty or previewing end
-    if w or showEmpty then
+    -- Visibility: an eligible slot always shows. An empty panel shows when auto-hide is off,
+    -- while the mouse is on it, or during the 30s login/hover preview. Toggling auto-hide
+    -- cancels the preview (GJ.CancelPreview) so the setting is felt instantly.
+    if w or not db.AutoHide or hovering or previewing then
       panel.icon:SetTexture(w and w.icon or ADDON_ICON)
       panel.icon:SetDesaturated(not w)   -- grey bag when there is nothing to drop
       panel.text:SetText(text or (COLOR .. "no eligible junk to drop|r"))
@@ -961,6 +967,9 @@ function GJ.OnOptionChanged(key)
   if key == "MinimapHide" and DBIcon then
     if db.Minimap.hide then DBIcon:Hide("GotJunk") else DBIcon:Show("GotJunk") end
   end
+  -- Visibility settings cancel the 30s preview so the change is felt immediately rather than
+  -- looking like it did nothing until the timer runs out.
+  if key == "AutoHide" or key == "ShowPanel" then GJ.CancelPreview(); return end
   if key:find("^FoodWater") then GJ.Scan() else GJ.Refresh() end
 end
 
