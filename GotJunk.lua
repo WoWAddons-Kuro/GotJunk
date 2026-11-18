@@ -22,6 +22,7 @@ local DEFAULTS = {
   FoodWaterMode = "stacks", -- "never" | "stacks" (junk beyond the fullest N stacks per item) | "lowlevel"
   FoodWaterKeepStacks = 3,
   AutoHide = false,         -- hide the panel when nothing is eligible/shown (default off: always visible)
+  Style = "classic",        -- "classic" rounded tooltip border | "flat" modern
   AutoDrop_Below10c = false,
   AutoDrop_Below2Pct = false,
   ShowPanel = nil,      -- decided on first login: false if an LDB display host is present
@@ -344,6 +345,27 @@ function GJ.StartPreview(seconds)
   GJ.Refresh()
 end
 
+-- Two looks for the panel. "classic" = Blizzard tooltip border; "flat" = solid dark fill with
+-- a crisp 1px edge, no tiling art.
+local PANEL_STYLES = {
+  classic = {
+    backdrop = { bgFile = "Interface\\Tooltips\\UI-Tooltip-Background", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 } },
+    bg = { 0, 0, 0, 0.6 }, border = { 0.5, 0.5, 0.5, 0.8 },
+  },
+  flat = {
+    backdrop = { bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1, insets = { left = 1, right = 1, top = 1, bottom = 1 } },
+    bg = { 0.06, 0.06, 0.06, 0.85 }, border = { 0.25, 0.25, 0.25, 1 },
+  },
+}
+
+function GJ.ApplyPanelStyle()
+  if not (panel and panel.SetBackdrop) then return end
+  local st = PANEL_STYLES[db.Style or "classic"] or PANEL_STYLES.classic
+  panel:SetBackdrop(st.backdrop)
+  panel:SetBackdropColor(unpack(st.bg))
+  panel:SetBackdropBorderColor(unpack(st.border))
+end
+
 local function CreatePanel()
   if panel then return panel end
   panel = CreateFrame("Button", "GotJunkPanel", UIParent, BackdropTemplateMixin and "BackdropTemplate" or nil)
@@ -353,11 +375,7 @@ local function CreatePanel()
   panel:SetMovable(true)
   panel:RegisterForDrag("LeftButton")
   panel:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-  if panel.SetBackdrop then
-    panel:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
-    panel:SetBackdropColor(0, 0, 0, 0.6)
-    panel:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.8)
-  end
+  GJ.ApplyPanelStyle()
   panel.icon = panel:CreateTexture(nil, "ARTWORK")
   panel.icon:SetSize(16, 16)
   panel.icon:SetPoint("BOTTOMLEFT", 5, (PANEL_ROW_HEIGHT - 16) / 2)
@@ -526,6 +544,19 @@ local function CreateOptions()
   disp:Add(Slider(disp, "GotJunkOptionsShowWhen", "ShowWhenFreeBelow", 3, 0, 20,
     function(v) return "Show junk when fewer than " .. v .. " slots free (0 = never)" end, GJ.Refresh), 44, -10)
   disp:Finish()
+
+  -- Section: Visual style (radio group)
+  local vs = Section("Visual style")
+  local styleRadios = {}
+  local function StyleRadio(style, label)
+    local r = CreateFrame("CheckButton", nil, vs, "UIRadioButtonTemplate"); r:SetSize(16, 16)
+    r.text = r:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall"); r.text:SetPoint("LEFT", r, "RIGHT", 4, 0); r.text:SetText(label)
+    r:SetScript("OnClick", function() db.Style = style; for _, o in ipairs(styleRadios) do o:SetChecked(o.style == style) end; GJ.ApplyPanelStyle(); GJ.Refresh() end)
+    r.style = style; r.Update = function(self) self:SetChecked((db.Style or "classic") == style) end
+    styleRadios[#styleRadios + 1] = r; return vs:Add(r, 16, -6, 0)
+  end
+  StyleRadio("classic", "Classic rounded border"); StyleRadio("flat", "Modern flat")
+  vs:Finish()
 
   -- Section: Auto-drop thresholds
   local ad = Section("Auto-drop thresholds")
