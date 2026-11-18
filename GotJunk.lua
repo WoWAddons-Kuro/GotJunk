@@ -29,7 +29,9 @@ local DEFAULTS = {
   Locked = false,
   Position = nil,       -- { point, x, y }
   Minimap = { hide = false },
-  Protect = {},         -- [itemID] = true
+  Protect = {},         -- account-wide protected list: [itemID] = true
+  BuiltinRemoved = {},  -- built-in entries the user removed: [itemID] = true (persists across updates)
+  UsePerCharacter = false, -- show/use the per-character tier (GotJunkCharDB.Protect)
 }
 
 local db
@@ -38,6 +40,7 @@ local db
 -- utils / API shims (Era 1.15 and Forever 16001 both expose C_Container; keep fallbacks)
 -- ---------------------------------------------------------------------------
 local function Print(fmt, ...) print("|cffb0b0b0GotJunk|r: " .. string.format(fmt, ...)) end
+GJ.Print = Print
 
 local GetContainerNumSlots     = C_Container and C_Container.GetContainerNumSlots     or GetContainerNumSlots
 local GetContainerNumFreeSlots = C_Container and C_Container.GetContainerNumFreeSlots or GetContainerNumFreeSlots
@@ -77,7 +80,7 @@ GJ.Occupancy = {}         -- array over general-bag slots: true occupied / false
 GJ.Scan_Incomplete = false  -- some item info was not cached; rescan on GET_ITEM_INFO_RECEIVED
 
 local function IsJunkCandidate(itemID, noValue, containerQuality)
-  if not itemID or noValue or itemID == HEARTHSTONE_ID or db.Protect[itemID] then return false end
+  if not itemID or noValue or itemID == HEARTHSTONE_ID or GJ.IsProtected(itemID) then return false end
   local name, link, quality, _, minLevel, _, _, maxStack, _, icon, price, classID, subclassID = GetItemInfo(itemID)
   if not name then return nil end  -- not cached yet
   quality = quality or containerQuality
@@ -189,11 +192,69 @@ function GJ.DropWorst(reason)
   return true
 end
 
+-- ---------------------------------------------------------------------------
+-- protected lists: three tiers, union. See SPEC "Protected lists (v2)".
+--   character : GotJunkCharDB.Protect   (only when db.UsePerCharacter)
+--   account   : GotJunkDB.Protect
+--   builtin   : GJ.BuiltinProtect minus GotJunkDB.BuiltinRemoved
+-- ---------------------------------------------------------------------------
+local function CharProtect() return GotJunkCharDB and GotJunkCharDB.Protect or {} end
+
+function GJ.IsProtected(itemID)
+  if not itemID then return false end
+  if db.UsePerCharacter and CharProtect()[itemID] then return true end
+  if db.Protect[itemID] then return true end
+  if GJ.BuiltinProtect and GJ.BuiltinProtect[itemID] and not db.BuiltinRemoved[itemID] then return true end
+  return false
+end
+
+-- Which tier(s) an item sits in, for display: returns "character", "account", "builtin", "builtin-removed" or nil.
+function GJ.ProtectTier(itemID)
+  if CharProtect()[itemID] then return "character" end
+  if db.Protect[itemID] then return "account" end
+  if GJ.BuiltinProtect and GJ.BuiltinProtect[itemID] then return db.BuiltinRemoved[itemID] and "builtin-removed" or "builtin" end
+  return nil
+end
+
+local function LinkOrID(itemID) local _, link = GetItemInfo(itemID); return link or ("item:" .. itemID) end
+
+-- tier: "account" | "character". Default tier is character when per-char is on, else account.
+function GJ.ProtectAdd(itemID, tier)
+  if not itemID then return end
+  tier = tier or (db.UsePerCharacter and "character" or "account")
+  local list = tier == "character" and CharProtect() or db.Protect
+  if list[itemID] then Print("%s is already in the %s list", LinkOrID(itemID), tier); return end
+  list[itemID] = true
+  Print("protected %s (%s list)", LinkOrID(itemID), tier)
+  GJ.Scan(); if GJ.ProtectUI_Refresh then GJ.ProtectUI_Refresh() end
+end
+
+function GJ.ProtectRemove(itemID, tier)
+  if not itemID then return end
+  if tier == "builtin" then db.BuiltinRemoved[itemID] = true
+  elseif tier == "character" then CharProtect()[itemID] = nil
+  else db.Protect[itemID] = nil end
+  Print("unprotected %s (%s list)", LinkOrID(itemID), tier or "account")
+  GJ.Scan(); if GJ.ProtectUI_Refresh then GJ.ProtectUI_Refresh() end
+end
+
+function GJ.ProtectRestoreBuiltin(itemID)
+  if itemID then db.BuiltinRemoved[itemID] = nil else wipe(db.BuiltinRemoved) end
+  GJ.Scan(); if GJ.ProtectUI_Refresh then GJ.ProtectUI_Refresh() end
+end
+
+-- Promote: character -> account. Demote: account -> character.
+function GJ.ProtectPromote(itemID) CharProtect()[itemID] = nil; db.Protect[itemID] = true; GJ.Scan(); if GJ.ProtectUI_Refresh then GJ.ProtectUI_Refresh() end end
+function GJ.ProtectDemote(itemID)  db.Protect[itemID] = nil; CharProtect()[itemID] = true; GJ.Scan(); if GJ.ProtectUI_Refresh then GJ.ProtectUI_Refresh() end end
+
+-- Shift-right-click on the display: toggle. If protected anywhere, remove from the tier it is in
+-- (built-in -> mark removed); otherwise add to the default tier.
 function GJ.ToggleProtect(itemID)
   if not itemID then return end
-  if db.Protect[itemID] then db.Protect[itemID] = nil; Print("unprotected item %d", itemID)
-  else db.Protect[itemID] = true; local _, link = GetItemInfo(itemID); Print("protected %s", link or itemID) end
-  GJ.Scan()
+  local tier = GJ.ProtectTier(itemID)
+  if tier == "builtin-removed" then GJ.ProtectRestoreBuiltin(itemID)
+  elseif tier then GJ.ProtectRemove(itemID, tier)
+  else GJ.ProtectAdd(itemID) end
 end
 
 -- ---------------------------------------------------------------------------
@@ -594,15 +655,24 @@ local function CreateOptions()
     function(v) return "Stacks of each food/water to keep: " .. v end, GJ.Scan), 44, -12)
   fw:Finish()
 
-  local prot = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-  prot:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 0, -20); prot:SetWidth(560); prot:SetJustifyH("LEFT")
-  local clear = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-  clear:SetSize(140, 22); clear:SetPoint("TOPLEFT", prot, "BOTTOMLEFT", 0, -6); clear:SetText("Clear protected list")
-  clear:SetScript("OnClick", function() wipe(db.Protect); GJ.Scan(); optionsFrame:Update() end)
+  -- Section: Protected items (built in ProtectUI.lua; returns the frame that ends the layout)
+  local protSection = Section("Protected items")
+  local protBottom = GJ.ProtectUI_Build(protSection, BOX_W - 2 * PAD)
+  protSection:Add(protBottom, protBottom:GetHeight(), -4)
+  protSection:Finish()
+  -- The protected section grows/shrinks (per-char box, list sizes); resize it and the scroll
+  -- content whenever the UI re-renders.
+  local protBaseH = protSection.inner_h - protBottom:GetHeight()
+  GJ.OptionsLayoutChanged = function()
+    protSection.inner_h = protBaseH + protBottom:GetHeight()
+    protSection:Finish()
+    local top, bottom = content:GetTop(), protSection:GetBottom()
+    if top and bottom then content:SetHeight(top - bottom + 24) end
+  end
 
   -- Content height = bottom of the last widget; give the scroll frame something to scroll.
   local function LayoutContentHeight()
-    local top, bottom = content:GetTop(), clear:GetBottom()
+    local top, bottom = content:GetTop(), protSection:GetBottom()
     if top and bottom then content:SetHeight(top - bottom + 24) end
   end
 
@@ -615,9 +685,7 @@ local function CreateOptions()
   end
   optionsFrame.Update = function(self)
     UpdateTree(content)
-    local n, names = 0, {}
-    for id in pairs(db.Protect) do n = n + 1; local _, link = GetItemInfo(id); names[#names + 1] = link or tostring(id) end
-    prot:SetText(n == 0 and "Protected items: none (shift-right-click the display, or /gotjunk protect <itemlink>)" or ("Protected items (" .. n .. "): " .. table.concat(names, "  ")))
+    if GJ.ProtectUI_Refresh then GJ.ProtectUI_Refresh() end
     LayoutContentHeight()
   end
   optionsFrame:SetScript("OnShow", optionsFrame.Update)
@@ -656,13 +724,25 @@ local function Slash(msg)
   elseif cmd == "drop" then if not GJ.DropWorst("slash") then Print("nothing dropped (needs a hardware event, e.g. a keybound macro)") end
   elseif cmd == "scan" then GJ.Scan(); Print("%d junk slots, total %s, %d free slots", #GJ.JunkSlots, FormatMoney(GJ.Junk_TotalValue), GJ.FreeSlots)
   elseif cmd == "protect" then
-    if rest == "list" or rest == "" then
-      local n = 0
-      for id in pairs(db.Protect) do n = n + 1; local _, link = GetItemInfo(id); print("  " .. (link or tostring(id))) end
-      Print("%d protected item(s). Usage: /gotjunk protect <itemlink|itemID>", n)
+    local sub, arg = rest:match("^(%S*)%s*(.-)$")
+    if sub == "list" or sub == "" then
+      local function dump(label, t)
+        local n = 0
+        for id in pairs(t) do n = n + 1; local _, link = GetItemInfo(id); print(string.format("  [%s] %s", label, link or ("item:" .. id))) end
+        return n
+      end
+      local total = 0
+      if db.UsePerCharacter then total = total + dump("character", GotJunkCharDB.Protect) end
+      total = total + dump("account", db.Protect)
+      for id in pairs(GJ.BuiltinProtect or {}) do if not db.BuiltinRemoved[id] then total = total + 1; local _, link = GetItemInfo(id); print("  [built-in] " .. (link or ("item:" .. id))) end end
+      Print("%d protected item(s). Usage: /gotjunk protect [account|character] <itemlink|itemID>", total)
     else
+      local tier
+      if sub == "account" or sub == "character" then tier = sub; rest = arg end
       local id = tonumber(rest) or tonumber(rest:match("item:(%d+)"))
-      if id then GJ.ToggleProtect(id) else Print("could not read an item from '%s'", rest) end
+      if not id then Print("could not read an item from '%s'", rest)
+      elseif tier then GJ.ProtectAdd(id, tier)
+      else GJ.ToggleProtect(id) end
     end
   elseif cmd == "status" then
     local version = (C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata)(ADDON_NAME, "Version")

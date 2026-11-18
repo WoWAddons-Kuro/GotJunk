@@ -10,3 +10,4 @@
 - 'Auto-hide panel when no eligible junk' checkbox (default on).
 - Options page reorganised into bordered sections (Display / Auto-drop / Food and water); auto-hide now first and off by default.
 - Panel: desaturated bag icon when nothing to drop; icon+text row centred under the dots.
+- Protected lists v2: three tiers (character / account / built-in), union semantics. Per-character tier hidden until enabled. Options page lists each tier with Delete / Promote / Demote / Restore, a 'Copy list' hand-off frame (itemID<TAB>name), and an Add box. /gotjunk protect [account|character] <link>.

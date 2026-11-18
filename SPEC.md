@@ -108,60 +108,68 @@ GotJunk/
   README.md  CHANGELOG.md  LICENSE  .pkgmeta  .gitignore  SPEC.md
 ```
 
-## Protected lists (v2) — decisions from Q1 (all three), Q2 B, Q3 A
+## Protected lists (v2) — three tiers, union semantics
 
-Three independent sources; an item is protected if **any** says so.
+Three lists; an item is protected if it is in **any** of them (union). No rules in v2 — the
+user curates the built-in list by hand (owner supplies item IDs; the addon ships them).
 
-| source | storage | editable |
+| tier | storage | row actions |
 |---|---|---|
-| **Built-in list** | `GJ.BuiltinProtect = { [itemID] = "reason" }` in `BuiltinProtect.lua`; user removals in `GotJunkDB.BuiltinRemoved[itemID] = true` (account-wide, survive updates; new seeds still appear) | remove / restore |
-| **Custom list** | `GotJunkDB.Protect[itemID] = true` (account) **or** `GotJunkCharDB.Protect[itemID] = true` when `GotJunkCharDB.UsePerCharacter` is on. Enabling per-character **copies** the account list into the character list once. | add / remove |
-| **Rules** | `GotJunkDB.Rules.ProtectEmptySlotGear` (default **on**), `GotJunkDB.Rules.ProtectUpgrades` (default **off**) | toggle |
+| **Character** | `GotJunkCharDB.Protect[itemID] = true` (SavedVariablesPerCharacter). Hidden and unused unless `GotJunkDB.UsePerCharacter` is on. | Delete · **Promote** (→ account) |
+| **Account** | `GotJunkDB.Protect[itemID] = true` (the existing table). Default destination for shift-right-click / `/gotjunk protect`. | Delete · **Demote** (→ character, only shown when per-char is enabled) |
+| **Built-in** | `GJ.BuiltinProtect = { [itemID] = true }` in `BuiltinProtect.lua`; user removals in `GotJunkDB.BuiltinRemoved[itemID] = true` (account-wide, survive updates; new seeds still appear). | Remove / Restore |
 
-### Built-in seed content
-Grey/white gear a fresh character would actually wear: the level 1–10 vendor/drop shoulders,
-cloaks, belts, bracers, off-hands and the starter-class items that have no quest equivalent.
-Curated by itemID (Classic Era IDs; Forever shares them). Each entry carries a one-word reason
-shown in the list (`"shoulders"`, `"cloak"`…). ~30 entries to start; grows by issue reports.
+`GJ.IsProtected(itemID)` = `CharProtect[id] or AccountProtect[id] or (Builtin[id] and not BuiltinRemoved[id])`.
+Enabling per-character does **not** move or copy anything: account entries keep applying to
+every character; the character list is simply an additional tier. Disabling it leaves
+`GotJunkCharDB.Protect` intact but ignored.
 
-### Rule: ProtectEmptySlotGear (default on)
-Item is Armor/Weapon (classID 2/4), `GetItemInfo` equipLoc maps to an inventory slot via
-`C_Item.GetItemInventorySlotInfo` / `GetInventorySlotInfo`, **and** `GetInventoryItemID("player", slot)`
-is nil for that slot (either slot for rings/trinkets/weapons where two are possible). Then it is
-*not* junk. Rescan on `PLAYER_EQUIPMENT_CHANGED`. This is what covers "first shoulderpads" without
-hand-listing every one.
-
-### Rule: ProtectUpgrades (default off, opt-in)
-Same mapping; protected when the candidate's item level **>** the equipped item's level in that
-slot. Kept off by default: grey/white ilvl differences are noise and this would hoard.
+Where new protections land: shift-right-click and `/gotjunk protect` add to the **account**
+list by default; with per-character enabled they add to the **character** list (that is what
+"per character" means to the user). `/gotjunk protect account <link>` forces account.
 
 ### UI — `Protected items` section on the options page
-One scrollable list widget (`ScrollFrame` + row pool, 8 rows visible):
+Three stacked list boxes (character box hidden unless per-char is enabled), each a `ScrollFrame`
+with a pooled row list, ~6 rows visible, header with count:
 ```
-[icon] [Worn Shortsword]           built-in: weapon     [Remove]
-[icon] [Ruined Pelt]               custom               [Remove]
-[icon] [Flimsy Chain Vest]         built-in (removed)   [Restore]
-       rule: gear for an empty equipment slot   [x]
-       rule: gear that is an upgrade             [ ]
+[x] Use a per-character list on this character
+
+Character (2)                                   [Copy list]
+  [icon] [Shiny Bauble]              [Promote] [Delete]
+Account (5)                                     [Copy list]
+  [icon] [Bag of Marbles]            [Demote]  [Delete]
+  [icon] [Skinning Knife]            [Demote]  [Delete]
+Built-in (0)                                    [Copy list] [Restore all]
+  [icon] [Flimsy Chain Vest]  (removed)         [Restore]
+
+Add: [ editbox — shift-click an item link here ] [Add to account] [Add to character]
 ```
-- Filter dropdown: All · Built-in · Custom. Removed built-ins are shown greyed with Restore.
-- Add box: an EditBox you shift-click an item link into (+ `Add` button), same as `/gotjunk protect`.
-- Checkbox `Custom list is per character` (`GotJunkCharDB.UsePerCharacter`).
-- Buttons: `Clear custom list`, `Restore all built-ins`.
-- Rows show item links (tooltip on hover). Uncached items show the ID until
-  `GET_ITEM_INFO_RECEIVED`.
+- Rows: icon, item link (tooltip on hover), action buttons. Uncached items show `item:ID`
+  until `GET_ITEM_INFO_RECEIVED` re-renders.
+- **Copy list**: opens a small frame with a read-only, pre-selected `EditBox` containing one
+  line per item `itemID<TAB>Item Name` (name blank if uncached) so Ctrl-C grabs it. This is
+  the hand-off format the owner pastes back to seed `BuiltinProtect.lua`.
+- Removed built-ins are shown greyed in the built-in box with a Restore button.
+- Promote: delete from character, add to account. Demote: delete from account, add to
+  character. Both rescan.
+- `Add to character` only visible when per-char is enabled. Add parses a link or a bare ID.
 
 ### Saved variables
 ```lua
 -- TOC: ## SavedVariables: GotJunkDB   ## SavedVariablesPerCharacter: GotJunkCharDB
+GotJunkDB.UsePerCharacter = false      -- account-wide switch (hidden tier until on)
+GotJunkDB.Protect = { [itemID] = true }
 GotJunkDB.BuiltinRemoved = { [itemID] = true }
-GotJunkDB.Rules = { ProtectEmptySlotGear = true, ProtectUpgrades = false }
-GotJunkCharDB = { UsePerCharacter = false, Protect = {} }
+GotJunkCharDB = { Protect = { [itemID] = true } }
 ```
 
+### Files
+- `BuiltinProtect.lua` — `GJ.BuiltinProtect = { --[[ [itemID] = true, -- Name ]] }` (empty
+  seed; owner fills via the Copy-list hand-off).
+- `ProtectUI.lua` — the three list boxes, copy frame, add row. Called from `CreateOptions`.
+
 ### Tooltip / status
-Tooltip footer gains `N protected (built-in B, custom C, rule R)`; `/gotjunk protect list`
-prints each with its source.
+`/gotjunk protect list` prints each with its tier. Tooltip unchanged.
 
 ## Plan
 - [x] Spec
@@ -170,10 +178,10 @@ prints each with its source.
 - [x] README / CHANGELOG / PROJECT_STRUCTURE entry, initial commit
 - [x] Full-stack-value ranking, ShowWhenFreeBelow gate, preview window, occupancy strip
 - [ ] In-game verification of the Forever loot-button hook (`LootFrame.ScrollBox` item frames)
-- [ ] Protected lists v2: DB model + `GotJunkCharDB` + per-char copy-on-enable
-- [ ] `BuiltinProtect.lua` seed (research Classic itemIDs for level 1–10 grey/white shoulders etc.)
-- [ ] Rules: ProtectEmptySlotGear (on), ProtectUpgrades (off) + `PLAYER_EQUIPMENT_CHANGED` rescan
-- [ ] Options: scrollable protected-list widget, filter, add box, per-char checkbox
+- [ ] Protected lists v2: DB model (`GotJunkCharDB`, `UsePerCharacter`, `BuiltinRemoved`), `GJ.IsProtected`
+- [ ] `BuiltinProtect.lua` empty seed + TOC entries
+- [ ] `ProtectUI.lua`: three list boxes, promote/demote/delete/restore, Copy-list frame, add row
+- [ ] Owner supplies built-in item IDs via Copy-list hand-off
 
 ## Open questions / later
 - Keybinding `GotJunk: Drop worst junk` (cheap to add if auto-loot users want it).
