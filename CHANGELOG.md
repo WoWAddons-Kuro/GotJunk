@@ -8,3 +8,5 @@
 - Bag occupancy strip: one dot per general-bag slot (bright = used, grey = free) above the junk row.
 - Food & water policy: never / keep N stacks per item (default 3) / low-level only.
 - 'Auto-hide panel when no eligible junk' checkbox (default on).
+- Options page reorganised into bordered sections (Display / Auto-drop / Food and water); auto-hide now first and off by default.
+- Panel: desaturated bag icon when nothing to drop; icon+text row centred under the dots.

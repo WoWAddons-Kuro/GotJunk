@@ -21,7 +21,7 @@ local DEFAULTS = {
   ShowWhenFreeBelow = 3,  -- display shows the worst slot only while free slots < this (0 = never)
   FoodWaterMode = "stacks", -- "never" | "stacks" (junk beyond the fullest N stacks per item) | "lowlevel"
   FoodWaterKeepStacks = 3,
-  AutoHide = true,          -- hide the panel when nothing is eligible/shown (off = always visible, handy for testing)
+  AutoHide = false,         -- hide the panel when nothing is eligible/shown (default off: always visible)
   AutoDrop_Below10c = false,
   AutoDrop_Below2Pct = false,
   ShowPanel = nil,      -- decided on first login: false if an LDB display host is present
@@ -407,11 +407,17 @@ function GJ.Refresh()
     CreatePanel()
     if w or previewing or not db.AutoHide then
       panel.icon:SetTexture(w and w.icon or ADDON_ICON)
+      panel.icon:SetDesaturated(not w)   -- grey bag when there is nothing to drop
       panel.text:SetText(text or (COLOR .. "no junk to drop|r"))
-      local textWidth = panel.text:GetStringWidth() + 16 + 20
+      local rowWidth = 16 + 5 + panel.text:GetStringWidth()   -- icon + gap + text
       local dotsWidth, dotsHeight = UpdateDots()
-      panel:SetWidth(math.max(120, math.min(400, math.max(textWidth, dotsWidth))))
+      local panelWidth = math.max(120, math.min(400, math.max(rowWidth + 20, dotsWidth)))
+      panel:SetWidth(panelWidth)
       panel:SetHeight(PANEL_ROW_HEIGHT + dotsHeight)
+      -- Centre the icon+text row under the dots; clamp the text so it can't run off the right edge.
+      local rowLeft = math.max(5, (panelWidth - rowWidth) / 2)
+      panel.icon:ClearAllPoints()
+      panel.icon:SetPoint("BOTTOMLEFT", rowLeft, (PANEL_ROW_HEIGHT - 16) / 2)
       panel:Show()
     else
       panel:Hide()
@@ -435,77 +441,99 @@ local function CreateOptions()
   sub:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6); sub:SetWidth(560); sub:SetJustifyH("LEFT")
   sub:SetText("Shows the least valuable grey/white slot in your bags. Left-click it to destroy it. Auto-drop destroys that slot on your next loot click when fewer than the chosen number of bag slots are free. When both thresholds are ticked, both must be true.")
 
-  local last = sub
-  local function Check(key, label, tip)
-    local cb = CreateFrame("CheckButton", nil, optionsFrame, "InterfaceOptionsCheckButtonTemplate")
-    cb:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 0, -8)
+  -- Layout grid: every widget hangs off `last` at a fixed left column; sections are bordered
+  -- boxes with a header. Keeps checkboxes, radios and sliders on one vertical line.
+  local BOX_W, PAD = 580, 10
+  local last, lastDy = sub, -14
+  local function Place(w, dy, dx) w:SetPoint("TOPLEFT", last, "BOTTOMLEFT", dx or 0, dy or lastDy); last = w; lastDy = -6 end
+
+  local function Check(parent, key, label, tip)
+    local cb = CreateFrame("CheckButton", nil, parent, "InterfaceOptionsCheckButtonTemplate")
     cb.Text:SetText(label)
     cb.tooltipText = tip
     cb:SetScript("OnClick", function(self) db[key] = self:GetChecked() and true or false; GJ.OnOptionChanged(key) end)
     cb.Update = function(self) self:SetChecked(db[key] and true or false) end
-    last = cb
     return cb
   end
 
-  -- Slots to keep clear (slider)
-  local slider = CreateFrame("Slider", "GotJunkOptionsKeepClear", optionsFrame, "OptionsSliderTemplate")
-  slider:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 8, -40)
-  slider:SetWidth(220); slider:SetMinMaxValues(0, 10); slider:SetValueStep(1); slider:SetObeyStepOnDrag(true)
-  _G[slider:GetName() .. "Low"]:SetText("0"); _G[slider:GetName() .. "High"]:SetText("10")
-  slider.Text = _G[slider:GetName() .. "Text"]
-  slider:SetScript("OnValueChanged", function(self, v)
-    v = math.floor(v + 0.5); db.KeepClearSlots = v
-    self.Text:SetText("Auto-drop thresholds: slots to keep clear: " .. v); GJ.Refresh()
-  end)
-  slider.Update = function(self) self:SetValue(db.KeepClearSlots or 1); self.Text:SetText("Auto-drop thresholds: slots to keep clear: " .. (db.KeepClearSlots or 1)) end
-  last = slider
+  -- Slider with its label above-left (not centred over the track) so it aligns with checkboxes.
+  local function Slider(parent, name, key, default, minV, maxV, labelFn, onChange)
+    local holder = CreateFrame("Frame", nil, parent); holder:SetSize(BOX_W - 2 * PAD, 44)
+    local label = holder:CreateFontString(nil, "ARTWORK", "GameFontHighlight"); label:SetPoint("TOPLEFT", 4, 0)
+    local s = CreateFrame("Slider", name, holder, "OptionsSliderTemplate")
+    s:SetPoint("TOPLEFT", label, "BOTTOMLEFT", 2, -6); s:SetWidth(220)
+    s:SetMinMaxValues(minV, maxV); s:SetValueStep(1); s:SetObeyStepOnDrag(true)
+    _G[name .. "Low"]:SetText(tostring(minV)); _G[name .. "High"]:SetText(tostring(maxV)); _G[name .. "Text"]:SetText("")
+    s:SetScript("OnValueChanged", function(self, v) v = math.floor(v + 0.5); db[key] = v; label:SetText(labelFn(v)); onChange() end)
+    holder.Update = function() s:SetValue(db[key] or default); label:SetText(labelFn(db[key] or default)) end
+    return holder
+  end
 
-  local c1 = Check("AutoDrop_Below10c", "Auto-drop below 10c slot max", "Destroy the worst slot only if its whole stack is worth less than 10 copper.")
-  c1:SetPoint("TOPLEFT", slider, "BOTTOMLEFT", -8, -12)
-  local c2 = Check("AutoDrop_Below2Pct", "Auto-drop below 2% of all bag junk value", "Destroy the worst slot only if it is worth less than 2% of all grey/white junk in your bags.")
-  local c3 = Check("ShowPanel", "Show standalone panel", "Off by default when a LibDataBroker display (ChocolateBar, Titan...) is present.")
-  c3:SetPoint("TOPLEFT", c2, "BOTTOMLEFT", 0, -20)
+  -- Bordered section. Children are laid out inside with their own `last` chain; the box is
+  -- sized from the running height after the children are added.
+  local function Section(header)
+    local box = CreateFrame("Frame", nil, optionsFrame, BackdropTemplateMixin and "BackdropTemplate" or nil)
+    box:SetWidth(BOX_W)
+    if box.SetBackdrop then
+      box:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+      box:SetBackdropColor(0, 0, 0, 0.25); box:SetBackdropBorderColor(0.6, 0.6, 0.6, 0.6)
+    end
+    local h = box:CreateFontString(nil, "ARTWORK", "GameFontNormal"); h:SetPoint("TOPLEFT", PAD, -PAD); h:SetText(header)
+    box.inner_last, box.inner_h = h, PAD + 14
+    function box:Add(w, height, dy, dx)
+      dy = dy or -6
+      w:SetPoint("TOPLEFT", self.inner_last, "BOTTOMLEFT", dx or 0, dy)
+      if dx and dx ~= 0 then w.__dx = dx end
+      self.inner_last, self.inner_h = w, self.inner_h - dy + height
+      return w
+    end
+    function box:Finish() self:SetHeight(self.inner_h + PAD) end
+    Place(box, -14)
+    return box
+  end
 
-  -- Food & water policy (radio group)
-  local fwLabel = optionsFrame:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-  fwLabel:SetPoint("TOPLEFT", c3, "BOTTOMLEFT", 0, -16); fwLabel:SetText("Food and water")
+  -- Auto-hide first, directly under the intro (handy to turn off for testing).
+  Place(Check(optionsFrame, "AutoHide", "Auto-hide panel when no eligible junk", "Untick to keep the panel (and its bag dots) visible at all times."), -14)
+
+  -- Section: Display
+  local disp = Section("Display")
+  disp:Add(Check(disp, "ShowPanel", "Show standalone panel", "Off by default when a LibDataBroker display (ChocolateBar, Titan...) is present."), 26)
+  disp:Add(Check(disp, "Locked", "Lock panel position"), 26)
+  local c5 = disp:Add(Check(disp, "MinimapHide", "Hide minimap button"), 26)
+  c5:SetScript("OnClick", function(self) db.Minimap.hide = self:GetChecked() and true or false; GJ.OnOptionChanged("MinimapHide") end)
+  c5.Update = function(self) self:SetChecked(db.Minimap.hide and true or false) end
+  disp:Add(Slider(disp, "GotJunkOptionsShowWhen", "ShowWhenFreeBelow", 3, 0, 20,
+    function(v) return "Show junk when fewer than " .. v .. " slots free (0 = never)" end, GJ.Refresh), 44, -10)
+  disp:Finish()
+
+  -- Section: Auto-drop thresholds
+  local ad = Section("Auto-drop thresholds")
+  ad:Add(Slider(ad, "GotJunkOptionsKeepClear", "KeepClearSlots", 1, 0, 10,
+    function(v) return "Slots to keep clear: " .. v end, GJ.Refresh), 44)
+  ad:Add(Check(ad, "AutoDrop_Below10c", "Auto-drop below 10c slot max", "Destroy the worst slot only if its whole stack is worth less than 10 copper."), 26, -8)
+  ad:Add(Check(ad, "AutoDrop_Below2Pct", "Auto-drop below 2% of all bag junk value", "Destroy the worst slot only if it is worth less than 2% of all grey/white junk in your bags."), 26)
+  ad:Finish()
+
+  -- Section: Food and water (radio group, straight column)
+  local fw = Section("Food and water")
   local radios = {}
-  local function Radio(anchor, mode, label, tip)
-    local r = CreateFrame("CheckButton", nil, optionsFrame, "UIRadioButtonTemplate")
-    r:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 4, -6)
+  local function Radio(mode, label, tip)
+    local r = CreateFrame("CheckButton", nil, fw, "UIRadioButtonTemplate")
+    r:SetSize(16, 16)
     r.text = r:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall"); r.text:SetPoint("LEFT", r, "RIGHT", 4, 0); r.text:SetText(label)
     r.tooltipText = tip
     r:SetScript("OnClick", function() db.FoodWaterMode = mode; for _, o in ipairs(radios) do o:SetChecked(o.mode == mode) end; GJ.Scan() end)
     r.mode = mode
     r.Update = function(self) self:SetChecked(db.FoodWaterMode == mode) end
     radios[#radios + 1] = r
-    return r
+    return fw:Add(r, 16, -6, 0)
   end
-  local r1 = Radio(fwLabel, "never", "Never junk food or water")
-  local r2 = Radio(r1, "stacks", "Only junk food and water beyond the fullest N stacks of each item")
-  local r3 = Radio(r2, "lowlevel", "Only junk low-level food and water (required level 10+ below yours)", "Vendor food/water tiers unlock every ~10 levels; once the next tier is available the old one is junk.")
-  local fwSlider = CreateFrame("Slider", "GotJunkOptionsFoodStacks", optionsFrame, "OptionsSliderTemplate")
-  fwSlider:SetPoint("TOPLEFT", r3, "BOTTOMLEFT", 4, -24)
-  fwSlider:SetWidth(220); fwSlider:SetMinMaxValues(0, 10); fwSlider:SetValueStep(1); fwSlider:SetObeyStepOnDrag(true)
-  _G[fwSlider:GetName() .. "Low"]:SetText("0"); _G[fwSlider:GetName() .. "High"]:SetText("10")
-  fwSlider.Text = _G[fwSlider:GetName() .. "Text"]
-  fwSlider:SetScript("OnValueChanged", function(self, v) v = math.floor(v + 0.5); db.FoodWaterKeepStacks = v; self.Text:SetText("Stacks of each food/water to keep: " .. v); GJ.Scan() end)
-  fwSlider.Update = function(self) self:SetValue(db.FoodWaterKeepStacks or 3); self.Text:SetText("Stacks of each food/water to keep: " .. (db.FoodWaterKeepStacks or 3)) end
-
-  local showSlider = CreateFrame("Slider", "GotJunkOptionsShowWhen", optionsFrame, "OptionsSliderTemplate")
-  showSlider:SetPoint("TOPLEFT", fwSlider, "BOTTOMLEFT", 0, -36)
-  showSlider:SetWidth(220); showSlider:SetMinMaxValues(0, 20); showSlider:SetValueStep(1); showSlider:SetObeyStepOnDrag(true)
-  _G[showSlider:GetName() .. "Low"]:SetText("0"); _G[showSlider:GetName() .. "High"]:SetText("20")
-  showSlider.Text = _G[showSlider:GetName() .. "Text"]
-  local function ShowSliderLabel(v) return "Show junk when fewer than " .. v .. " slots free (0 = never)" end
-  showSlider:SetScript("OnValueChanged", function(self, v) v = math.floor(v + 0.5); db.ShowWhenFreeBelow = v; self.Text:SetText(ShowSliderLabel(v)); GJ.Refresh() end)
-  showSlider.Update = function(self) self:SetValue(db.ShowWhenFreeBelow or 3); self.Text:SetText(ShowSliderLabel(db.ShowWhenFreeBelow or 3)) end
-  last = showSlider
-  Check("AutoHide", "Auto-hide panel when no eligible junk", "Untick to keep the panel (and its bag dots) visible at all times.")
-  Check("Locked", "Lock panel position")
-  local c5 = Check("MinimapHide", "Hide minimap button")
-  c5:SetScript("OnClick", function(self) db.Minimap.hide = self:GetChecked() and true or false; GJ.OnOptionChanged("MinimapHide") end)
-  c5.Update = function(self) self:SetChecked(db.Minimap.hide and true or false) end
+  Radio("never", "Never junk food or water")
+  Radio("stacks", "Only junk food and water beyond the fullest N stacks of each item")
+  Radio("lowlevel", "Only junk low-level food and water (required level 10+ below yours)", "Vendor food/water tiers unlock every ~10 levels; once the next tier is available the old one is junk.")
+  fw:Add(Slider(fw, "GotJunkOptionsFoodStacks", "FoodWaterKeepStacks", 3, 0, 10,
+    function(v) return "Stacks of each food/water to keep: " .. v end, GJ.Scan), 44, -12)
+  fw:Finish()
 
   local prot = optionsFrame:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
   prot:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 0, -20); prot:SetWidth(560); prot:SetJustifyH("LEFT")
