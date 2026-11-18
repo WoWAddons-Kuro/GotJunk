@@ -36,7 +36,7 @@ A bag slot is a **JunkSlot** when all of:
 | not Hearthstone (6948) | hard-coded safety |
 | not locked (`isLocked` false) | container info |
 
-`JunkSlot_Value = sellPrice * stackCount` (current, shown). **Ranking and thresholds use `JunkSlot_MaxStackValue = sellPrice * maxStack`** (what the slot is worth when full — a slot holding 1x 5c pelt (max 1) is less worth keeping than 3x 1c water (max 20 = 20c)). Sorted ascending by MaxStackValue,
+`JunkSlot_Value = sellPrice * stackCount` (current, shown). **Ranking and thresholds use `JunkSlot_MaxStackValue = sellPrice * maxStack`** (what the slot is worth when full ï¿½ a slot holding 1x 5c pelt (max 1) is less worth keeping than 3x 1c water (max 20 = 20c)). Sorted ascending by MaxStackValue,
 ties by itemID then bag/slot (deterministic). `Junk_TotalValue = Î£ JunkSlot_Value`.
 Items whose info is not cached yet are skipped and a rescan happens on `GET_ITEM_INFO_RECEIVED`.
 
@@ -105,9 +105,11 @@ GotJunk/
 
 ## Plan
 - [x] Spec
-- [ ] Scaffold repo, libs, TOC
-- [ ] `GotJunk.lua`: scan, ranking, delete, loot hook, LDB, panel, options, slash
-- [ ] README / CHANGELOG / PROJECT_STRUCTURE entry, initial commit
+- [x] Scaffold repo, libs, TOC
+- [x] `GotJunk.lua`: scan, ranking, delete, loot hook, LDB, panel, options, slash
+- [x] README / CHANGELOG / PROJECT_STRUCTURE entry, initial commit
+- [x] Full-stack-value ranking, ShowWhenFreeBelow gate, preview window, occupancy strip
+- [ ] In-game verification of the Forever loot-button hook (`LootFrame.ScrollBox` item frames)
 
 ## Open questions / later
 - Keybinding `GotJunk: Drop worst junk` (cheap to add if auto-loot users want it).

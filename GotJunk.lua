@@ -267,6 +267,7 @@ local function UpdateDots()
   if n == 0 then for _, d in ipairs(dots) do d:Hide() end return 0, 0 end
   local rows = math.ceil(n / DOTS_PER_ROW)
   local perRow = math.ceil(n / rows)   -- balance rows (e.g. 28 slots -> 14 + 14, not 20 + 8)
+  local stripWidth = perRow * (DOT_SIZE + DOT_GAP) - DOT_GAP
   for i = 1, n do
     local d = dots[i]
     if not d then
@@ -276,13 +277,16 @@ local function UpdateDots()
       dots[i] = d
     end
     local row, col = math.floor((i - 1) / perRow), (i - 1) % perRow
+    -- last row may be shorter; centre each row on its own
+    local rowCount = math.min(perRow, n - row * perRow)
+    local rowWidth = rowCount * (DOT_SIZE + DOT_GAP) - DOT_GAP
     d:ClearAllPoints()
-    d:SetPoint("TOPLEFT", panel, "TOPLEFT", 5 + col * (DOT_SIZE + DOT_GAP), -(DOTS_TOP_PAD + row * (DOT_SIZE + DOT_GAP)))
-    if occ[i] then d:SetVertexColor(1, 0.82, 0, 0.95) else d:SetVertexColor(0.45, 0.45, 0.45, 0.6) end
+    d:SetPoint("TOP", panel, "TOP", -rowWidth / 2 + col * (DOT_SIZE + DOT_GAP) + DOT_SIZE / 2, -(DOTS_TOP_PAD + row * (DOT_SIZE + DOT_GAP)))
+    if occ[i] then d:SetVertexColor(0.85, 0.85, 0.85, 0.95) else d:SetVertexColor(0.4, 0.4, 0.4, 0.55) end
     d:Show()
   end
   for i = n + 1, #dots do dots[i]:Hide() end
-  local width = perRow * (DOT_SIZE + DOT_GAP) - DOT_GAP + 10
+  local width = stripWidth + 10
   local height = DOTS_TOP_PAD + rows * (DOT_SIZE + DOT_GAP) - DOT_GAP
   return width, height
 end
