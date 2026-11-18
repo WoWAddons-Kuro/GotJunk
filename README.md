@@ -29,7 +29,16 @@ Classic Era and WoW Forever.
 
 ## Settings (`/gotjunk options`)
 
-**Food and water** (default: keep 3 stacks)`n- Never junk food or water`n- Only junk food and water beyond the fullest N stacks of each item`n- Only junk low-level food and water (your level is 10+ above its required level \u2014 a better vendor tier exists)`n`n**Auto-drop thresholds**
+**Food and water**
+- ( ) Never junk food or water
+- (x) Only junk low-level food and water (your level is 10+ above its required level — a better vendor tier exists)
+  - [ ] Junk usable excess non-buff food/water — stacks to keep: 3
+  - [x] Low-level buff food is junk eligible
+  - [ ] Off-class buff food is junk eligible (e.g. Strength food on a Mage; stamina-only food is never off-class)
+
+Buff food is anything whose tooltip grants *Well Fed*; detected automatically.
+
+**Auto-drop thresholds**
 - Slots to keep clear (default 1) — auto-drop is only considered while free slots are below this.
 - [ ] Auto-drop below 10c slot max
 - [ ] Auto-drop below 2% of all bag junk value
