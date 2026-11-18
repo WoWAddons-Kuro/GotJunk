@@ -440,9 +440,25 @@ local optionsCategory, optionsFrame
 local function CreateOptions()
   optionsFrame = CreateFrame("Frame", "GotJunkOptions")
   optionsFrame.name = "GotJunk"
-  local title = optionsFrame:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+
+  -- Scrolling container: the registered canvas holds a ScrollFrame whose child `content`
+  -- carries every widget. Mouse wheel scrolls; a standard scrollbar sits on the right.
+  local scroll = CreateFrame("ScrollFrame", "GotJunkOptionsScroll", optionsFrame, "UIPanelScrollFrameTemplate")
+  scroll:SetPoint("TOPLEFT", 0, -4)
+  scroll:SetPoint("BOTTOMRIGHT", -28, 4)
+  local content = CreateFrame("Frame", nil, scroll)
+  content:SetSize(620, 1200)   -- height is corrected in Update once widgets exist
+  scroll:SetScrollChild(content)
+  scroll:SetScript("OnSizeChanged", function(self, w) content:SetWidth(math.max(620, w)) end)
+  scroll:EnableMouseWheel(true)
+  scroll:SetScript("OnMouseWheel", function(self, delta)
+    local max = self:GetVerticalScrollRange()
+    self:SetVerticalScroll(math.max(0, math.min(max, self:GetVerticalScroll() - delta * 40)))
+  end)
+
+  local title = content:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
   title:SetPoint("TOPLEFT", 16, -16); title:SetText("GotJunk")
-  local sub = optionsFrame:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+  local sub = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
   sub:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6); sub:SetWidth(560); sub:SetJustifyH("LEFT")
   sub:SetText("Shows the least valuable grey/white slot in your bags. Left-click it to destroy it. Auto-drop destroys that slot on your next loot click when fewer than the chosen number of bag slots are free. When both thresholds are ticked, both must be true.")
 
@@ -477,7 +493,7 @@ local function CreateOptions()
   -- Bordered section. Children are laid out inside with their own `last` chain; the box is
   -- sized from the running height after the children are added.
   local function Section(header)
-    local box = CreateFrame("Frame", nil, optionsFrame, BackdropTemplateMixin and "BackdropTemplate" or nil)
+    local box = CreateFrame("Frame", nil, content, BackdropTemplateMixin and "BackdropTemplate" or nil)
     box:SetWidth(BOX_W)
     if box.SetBackdrop then
       box:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
@@ -498,7 +514,7 @@ local function CreateOptions()
   end
 
   -- Auto-hide first, directly under the intro (handy to turn off for testing).
-  Place(Check(optionsFrame, "AutoHide", "Auto-hide panel when no eligible junk", "Untick to keep the panel (and its bag dots) visible at all times."), -14)
+  Place(Check(content, "AutoHide", "Auto-hide panel when no eligible junk", "Untick to keep the panel (and its bag dots) visible at all times."), -14)
 
   -- Section: Display
   local disp = Section("Display")
@@ -540,17 +556,31 @@ local function CreateOptions()
     function(v) return "Stacks of each food/water to keep: " .. v end, GJ.Scan), 44, -12)
   fw:Finish()
 
-  local prot = optionsFrame:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+  local prot = content:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
   prot:SetPoint("TOPLEFT", last, "BOTTOMLEFT", 0, -20); prot:SetWidth(560); prot:SetJustifyH("LEFT")
-  local clear = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
+  local clear = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
   clear:SetSize(140, 22); clear:SetPoint("TOPLEFT", prot, "BOTTOMLEFT", 0, -6); clear:SetText("Clear protected list")
   clear:SetScript("OnClick", function() wipe(db.Protect); GJ.Scan(); optionsFrame:Update() end)
 
+  -- Content height = bottom of the last widget; give the scroll frame something to scroll.
+  local function LayoutContentHeight()
+    local top, bottom = content:GetTop(), clear:GetBottom()
+    if top and bottom then content:SetHeight(top - bottom + 24) end
+  end
+
+  -- Walk nested children so widgets inside section boxes get refreshed too.
+  local function UpdateTree(frame)
+    for _, child in ipairs({ frame:GetChildren() }) do
+      if child.Update then child:Update() end
+      UpdateTree(child)
+    end
+  end
   optionsFrame.Update = function(self)
-    for _, child in ipairs({ self:GetChildren() }) do if child.Update then child:Update() end end
+    UpdateTree(content)
     local n, names = 0, {}
     for id in pairs(db.Protect) do n = n + 1; local _, link = GetItemInfo(id); names[#names + 1] = link or tostring(id) end
     prot:SetText(n == 0 and "Protected items: none (shift-right-click the display, or /gotjunk protect <itemlink>)" or ("Protected items (" .. n .. "): " .. table.concat(names, "  ")))
+    LayoutContentHeight()
   end
   optionsFrame:SetScript("OnShow", optionsFrame.Update)
 
