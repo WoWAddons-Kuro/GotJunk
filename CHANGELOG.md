@@ -14,3 +14,5 @@
 - Food & water reworked: radio is never / low-level only; checkboxes for excess non-buff stacks (keep N), low-level buff food (on), off-class buff food (off). Buff food detected by tooltip scan; existing 'stacks' setting migrates to lowlevel + excess.
 - Auto-drop now sizes itself to the loot: counts slots the open loot window needs (merges into partial stacks count as 0) and drops enough junk to cover keep-clear + incoming, worst-first, all passing thresholds.
 - Auto-drop worth-guard: on a loot click, a bag slot is only destroyed if its full-stack value is below the cheapest junk-ish item in the loot; otherwise nothing is freed and the pickup is left to fail, with a chat line saying why.
+- Panel tooltip is now always torn down and rebuilt from scratch (single builder, GJ.ShowPanelTooltip) and rebuilt after every protect/drop while hovering.
+- Ranking tie-break: among slots with equal full-stack value, the one holding the least actual value drops first.

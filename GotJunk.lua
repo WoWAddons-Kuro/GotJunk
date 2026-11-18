@@ -225,8 +225,11 @@ function GJ.Scan()
   list = kept
   for _, j in ipairs(list) do total = total + j.value end
   -- Rank by what the slot is worth when FULL: a slot of 1x 5c pelt (max 1) beats 3x 1c water (max 20 = 20c).
+  -- Among equal full-stack value (e.g. several stacks of the same item), the slot holding the
+  -- LEAST actual value goes first: a 2/20 stack is destroyed before a 20/20 stack of the same thing.
   table.sort(list, function(a, b)
     if a.maxStackValue ~= b.maxStackValue then return a.maxStackValue < b.maxStackValue end
+    if a.value ~= b.value then return a.value < b.value end
     if a.itemID ~= b.itemID then return a.itemID < b.itemID end
     if a.bag ~= b.bag then return a.bag < b.bag end
     return a.slot < b.slot
@@ -513,13 +516,35 @@ end
 -- Deferred one frame: the click triggers Scan -> Refresh, which resizes/re-anchors the panel;
 -- that geometry change can fire OnLeave (hiding the tooltip) AFTER a synchronous re-render,
 -- and IsMouseOver() is unreliable mid-click. After layout settles we re-check and re-run OnEnter.
+-- ---------------------------------------------------------------------------
+-- Panel tooltip: the ONLY code that builds it. Always a full teardown + rebuild so the
+-- tooltip can never show stale rows after a protect/drop. Nothing else appends to it.
+-- ---------------------------------------------------------------------------
+function GJ.ShowPanelTooltip()
+  if not panel then return end
+  GJ.Refresh()                       -- data first (lifts the gate while hovering)
+  GameTooltip:Hide()                 -- teardown: drops owner + every line
+  GameTooltip:ClearLines()
+  -- Anchor to the side of the panel with the most screen room so the tooltip never covers it.
+  local _, cy = panel:GetCenter()
+  local below = cy and cy > UIParent:GetHeight() / 2
+  GameTooltip:SetOwner(panel, below and "ANCHOR_BOTTOM" or "ANCHOR_TOP")
+  OnTooltipShow(GameTooltip)
+  if not db.Locked then GameTooltip:AddLine("Drag to move  (/gotjunk lock)", 0.5, 0.5, 0.5) end
+  GameTooltip:Show()
+end
+
+function GJ.HidePanelTooltip()
+  if GameTooltip:IsOwned(panel) then GameTooltip:Hide() end
+end
+
+-- After any action (protect, drop) while the cursor is on the panel: rebuild from scratch.
+-- Deferred one frame because the action's Scan->Refresh resizes the panel under the cursor
+-- and IsMouseOver() is not trustworthy inside the click handler itself.
 function GJ.RefreshTooltip()
   if not panel then return end
   C_Timer.After(0, function()
-    if panel:IsVisible() and panel:IsMouseOver() then
-      local onEnter = panel:GetScript("OnEnter")
-      if onEnter then onEnter(panel) end
-    end
+    if panel:IsVisible() and panel:IsMouseOver() then GJ.ShowPanelTooltip() end
   end)
 end
 
@@ -675,19 +700,8 @@ local function CreatePanel()
   panel:SetScript("OnDragStart", function(self) if not db.Locked then self:StartMoving() end end)
   panel:SetScript("OnDragStop", function(self) self:StopMovingOrSizing(); SavePosition() end)
   panel:SetScript("OnClick", OnClick)
-  panel:SetScript("OnEnter", function(self)
-    GJ.StartPreview()  -- keep it around a while after the player found it (also refreshes: lifts the gate)
-    GJ.Refresh()
-    -- Anchor to the side of the panel with the most screen room so the tooltip never covers it.
-    local _, cy = self:GetCenter()
-    local screenH = UIParent:GetHeight()
-    local below = cy and cy > screenH / 2
-    GameTooltip:SetOwner(self, below and "ANCHOR_BOTTOM" or "ANCHOR_TOP")
-    OnTooltipShow(GameTooltip)
-    if not db.Locked then GameTooltip:AddLine("Drag to move  (/gotjunk lock)", 0.5, 0.5, 0.5) end
-    GameTooltip:Show()
-  end)
-  panel:SetScript("OnLeave", function() GameTooltip:Hide(); GJ.Refresh() end)
+  panel:SetScript("OnEnter", function() GJ.StartPreview(); GJ.ShowPanelTooltip() end)
+  panel:SetScript("OnLeave", function() GJ.HidePanelTooltip(); GJ.Refresh() end)
   RestorePosition()
   return panel
 end
