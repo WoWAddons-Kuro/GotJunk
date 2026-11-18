@@ -108,7 +108,7 @@ local function CreateBox(parent, tier, width)
   local function HeaderButton(text, w, onClick)
     local b = CreateFrame("Button", nil, box, "UIPanelButtonTemplate")
     b:SetSize(w, 18); b:SetPoint("TOPRIGHT", x, -3); b:SetText(text); b:SetScript("OnClick", onClick)
-    b:GetFontString():SetFontObject(GameFontHighlightSmall)
+    b:SetNormalFontObject(GameFontHighlightSmall); b:SetHighlightFontObject(GameFontNormalSmall); b:SetDisabledFontObject(GameFontDisableSmall)
     x = x - w - 4
     return b
   end
@@ -148,7 +148,7 @@ local function AcquireRow(box, i)
   local function Btn(anchorX, w)
     local b = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
     b:SetSize(w or BTN_W, ROW_H - 2); b:SetPoint("RIGHT", anchorX, 0)
-    b:GetFontString():SetFontObject(GameFontHighlightSmall)
+    b:SetNormalFontObject(GameFontHighlightSmall); b:SetHighlightFontObject(GameFontNormalSmall); b:SetDisabledFontObject(GameFontDisableSmall)
     return b
   end
   row.btnB = Btn(-2)              -- rightmost: Delete / Restore
