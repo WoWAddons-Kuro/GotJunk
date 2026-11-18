@@ -510,11 +510,17 @@ end
 
 -- Re-render the panel tooltip in place (if it is up) so a protect/drop shows its effect without
 -- the player having to move the mouse off and back on.
+-- Deferred one frame: the click triggers Scan -> Refresh, which resizes/re-anchors the panel;
+-- that geometry change can fire OnLeave (hiding the tooltip) AFTER a synchronous re-render,
+-- and IsMouseOver() is unreliable mid-click. After layout settles we re-check and re-run OnEnter.
 function GJ.RefreshTooltip()
-  if panel and GameTooltip:IsOwned(panel) and panel:IsMouseOver() then
-    local onEnter = panel:GetScript("OnEnter")
-    if onEnter then onEnter(panel) end
-  end
+  if not panel then return end
+  C_Timer.After(0, function()
+    if panel:IsVisible() and panel:IsMouseOver() then
+      local onEnter = panel:GetScript("OnEnter")
+      if onEnter then onEnter(panel) end
+    end
+  end)
 end
 
 local function OnTooltipShow(tt)
