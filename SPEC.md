@@ -63,8 +63,7 @@ Buff detection: `GJ.FoodProfile(itemID)` scans a hidden `GameTooltip` once per i
 | `AutoDrop_Below10c` | false | full-stack value must be `< 10` copper |
 | `AutoDrop_Below2Pct` | false | full-stack value must be `< 0.02 * Junk_TotalValue` |
 
-`AutoDrop_Pending(worstSlot)` = `freeSlots < KeepClearSlots` **and** at least one checkbox is on
-**and** every ticked checkbox passes (AND, Q4 answer B). Only the single worst slot is considered.
+**Drop sizing.** `GJ.AutoDrop_Plan(includeLoot)` computes `deficit = (KeepClearSlots + LootSlotsNeeded) - FreeSlots` and takes the worst-first prefix of the junk list whose every slot passes the ticked thresholds (AND, Q4 answer B), stopping at the first keeper. `LootSlotsNeeded` walks the open loot window: coins cost 0; an item that fits into an existing partial stack (same itemID with room) costs 0; otherwise `ceil(quantity / maxStack)`. The loot-click handler drops the whole plan (Era allows several deletes per click; Forever one, so it prints "still N short - click again"). The red "pending" colouring uses the plan with `includeLoot=false`.
 
 Trigger: loot-button `OnMouseDown` (hooked). Era: `LootButton1..4`. Forever/Mainline: frames of
 `LootFrame.ScrollBox` are hooked on each `LOOT_OPENED` (once per frame, flagged).

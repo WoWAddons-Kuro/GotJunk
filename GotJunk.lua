@@ -238,21 +238,86 @@ end
 function GJ.Worst() return GJ.JunkSlots[1] end
 
 -- Is the auto-drop condition met for the worst slot right now? (AND of ticked boxes)
-function GJ.AutoDrop_Pending()
-  local w = GJ.Worst()
-  if not w then return false end
-  if GJ.FreeSlots >= (db.KeepClearSlots or 0) then return false end
+-- Does one junk slot pass the ticked thresholds? (AND of ticked boxes; none ticked = never)
+local function SlotPassesThresholds(j)
   if not (db.AutoDrop_Below10c or db.AutoDrop_Below2Pct) then return false end
-  if db.AutoDrop_Below10c and not (w.maxStackValue < 10) then return false end
-  if db.AutoDrop_Below2Pct and not (w.maxStackValue < 0.02 * GJ.Junk_TotalValue) then return false end
+  if db.AutoDrop_Below10c and not (j.maxStackValue < 10) then return false end
+  if db.AutoDrop_Below2Pct and not (j.maxStackValue < 0.02 * GJ.Junk_TotalValue) then return false end
   return true
+end
+
+-- How many NEW bag slots the open loot window would need. Loot that merges into an existing
+-- partial stack (same itemID, room left) costs 0 slots; coins cost 0; everything else 1.
+-- Only called while the loot frame is open, so GetNumLootItems is meaningful.
+local function LootSlotsNeeded()
+  local need = 0
+  if not GetNumLootItems then return 0 end
+  local n = GetNumLootItems() or 0
+  if n == 0 then return 0 end
+  -- partial stacks in bags, by itemID: how many more units each can absorb
+  local room = {}
+  for bag = 0, NUM_BAGS do
+    local slots = GetContainerNumSlots(bag) or 0
+    for slot = 1, slots do
+      local itemID, count = GetSlotInfo(bag, slot)
+      if itemID then
+        local _, _, _, _, _, _, _, maxStack = GetItemInfo(itemID)
+        if maxStack and maxStack > 1 and (count or 1) < maxStack then
+          room[itemID] = (room[itemID] or 0) + (maxStack - (count or 1))
+        end
+      end
+    end
+  end
+  for i = 1, n do
+    local _, _, quantity, _, _, _, _, _, _, isCoin = GetLootSlotInfo(i)
+    local slotType = GetLootSlotType and GetLootSlotType(i)
+    local isItem = slotType == nil and not isCoin or (Enum and Enum.LootSlotType and slotType == Enum.LootSlotType.Item) or slotType == 1
+    if isItem then
+      local link = GetLootSlotLink(i)
+      local itemID = link and tonumber(link:match("item:(%d+)"))
+      quantity = quantity or 1
+      if itemID and room[itemID] and room[itemID] > 0 then
+        local absorbed = math.min(room[itemID], quantity)
+        room[itemID] = room[itemID] - absorbed
+        quantity = quantity - absorbed
+      end
+      if quantity > 0 then
+        local _, _, _, _, _, _, _, maxStack = itemID and GetItemInfo(itemID)
+        need = need + math.ceil(quantity / math.max(1, maxStack or 1))
+      end
+    end
+  end
+  return need
+end
+GJ.LootSlotsNeeded = LootSlotsNeeded
+
+-- How many junk slots auto-drop wants to destroy right now, and the ordered list of them.
+--   deficit = (KeepClearSlots + lootSlotsNeeded) - FreeSlots
+-- Each candidate must pass the thresholds; we take the worst-first prefix of the junk list.
+-- lootSlotsNeeded is only counted when the loot window is open (the loot-click path).
+function GJ.AutoDrop_Plan(includeLoot)
+  local wantFree = (db.KeepClearSlots or 0) + (includeLoot and LootSlotsNeeded() or 0)
+  local deficit = wantFree - GJ.FreeSlots
+  if deficit <= 0 then return 0, {} end
+  local plan = {}
+  for _, j in ipairs(GJ.JunkSlots) do
+    if #plan >= deficit then break end
+    if SlotPassesThresholds(j) then plan[#plan + 1] = j else break end  -- list is worst-first; stop at the first keeper
+  end
+  return #plan, plan, deficit
+end
+
+-- Is the auto-drop condition met right now? (used for the red "pending" colouring)
+function GJ.AutoDrop_Pending()
+  local n = GJ.AutoDrop_Plan(false)
+  return n > 0
 end
 
 -- ---------------------------------------------------------------------------
 -- destroy (must be called from a hardware event handler)
 -- ---------------------------------------------------------------------------
-function GJ.DropWorst(reason)
-  local w = GJ.Worst()
+-- Destroy one specific junk slot (from the current scan). Returns true on success.
+function GJ.DropSlot(w, reason)
   if not w then return false end
   if CursorHasItem() then ClearCursor() end
   -- re-validate the slot: bags may have shifted since the last scan
@@ -266,6 +331,10 @@ function GJ.DropWorst(reason)
   Print("%sdestroyed|r %s x%d (%s)%s", "|cffff6060", w.link or w.name, count or w.count, FormatMoney(w.price * (count or w.count)),
     reason and ("  [" .. reason .. "]") or "")
   return true
+end
+
+function GJ.DropWorst(reason)
+  return GJ.DropSlot(GJ.Worst(), reason)
 end
 
 -- ---------------------------------------------------------------------------
@@ -337,7 +406,22 @@ end
 -- loot hook: OnMouseDown on loot buttons runs before the loot OnClick and is a hardware event
 -- ---------------------------------------------------------------------------
 local function OnLootMouseDown()
-  if GJ.AutoDrop_Pending() then GJ.DropWorst("auto-drop on loot") end
+  -- Size the drop to the loot: deficit = keep-clear + slots the loot window needs - free.
+  -- Try to destroy that many; Forever allows one DeleteCursorItem per hardware event, Era
+  -- allows several, so loop until the plan is done or a delete stops working.
+  local n, plan, deficit = GJ.AutoDrop_Plan(true)
+  if n == 0 then return end
+  local dropped = 0
+  for _, j in ipairs(plan) do
+    if not GJ.DropSlot(j, string.format("auto-drop on loot, %d/%d", dropped + 1, n)) then break end
+    dropped = dropped + 1
+  end
+  if dropped > 0 then
+    GJ.Scan()
+    if deficit > dropped then
+      Print("|cffffb000still %d slot(s) short|r - click the loot again to drop more", deficit - dropped)
+    end
+  end
 end
 
 local hookedLootButtons = {}
@@ -393,7 +477,7 @@ local function OnTooltipShow(tt)
   end
   tt:AddDoubleLine("Free slots", tostring(GJ.FreeSlots) .. " (keep " .. tostring(db.KeepClearSlots) .. " clear)", 0.7, 0.7, 0.7, 1, 1, 1)
   if db.AutoDrop_Below10c or db.AutoDrop_Below2Pct then
-    tt:AddLine(GJ.AutoDrop_Pending() and "|cffff4040Auto-drop pending: next loot click destroys the worst slot|r" or "|cff60ff60Auto-drop armed|r")
+    tt:AddLine((function() local n = GJ.AutoDrop_Plan(false); if n > 0 then return string.format("|cffff4040Auto-drop pending: next loot click destroys %d slot(s)|r", n) end return "|cff60ff60Auto-drop armed|r - sizes the drop to the loot it is picking up" end)())
   end
   tt:AddLine(" ")
   tt:AddLine("|cffffffffLeft-click|r destroy worst slot", 0.8, 0.8, 0.8)
