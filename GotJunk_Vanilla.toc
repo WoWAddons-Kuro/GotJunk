@@ -1,0 +1,19 @@
+## Interface: 11509
+## Title: GotJunk
+## Notes: Always shows the least valuable grey/white slot in your bags. Click it to destroy it. Optionally destroys it for you when you loot with full bags.
+## Author: Kuro
+## Version: @project-version@
+## SavedVariables: GotJunkDB
+## SavedVariablesPerCharacter: GotJunkCharDB
+## OptionalDeps: LibStub, CallbackHandler-1.0, LibDataBroker-1.1, LibDBIcon-1.0
+## IconTexture: Interface\Icons\INV_Misc_Bag_10_Green
+## X-Website: https://github.com/WoWAddons-Kuro/GotJunk
+
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
+Libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
+
+BuiltinProtect.lua
+GotJunk.lua
+ProtectUI.lua
