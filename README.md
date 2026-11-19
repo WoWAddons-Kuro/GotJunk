@@ -47,7 +47,8 @@ Buff food is anything whose tooltip grants *Well Fed*; detected automatically.
 
 Both ticked = both must be true. Nothing ticked = never auto-drops.
 
-Also: show junk when fewer than N slots free (default 3; the display stays quiet until bags are getting tight), show panel, lock panel, hide minimap button, clear protected list.
+Also: show junk when fewer than N slots free (default 3; the display stays quiet until bags are getting tight), show panel, hide minimap button, clear protected list.
+**Panel** section: position and lock stored account wide (default) or per character, plus the lock checkbox.
 
 ## What counts as junk
 

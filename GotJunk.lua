@@ -29,8 +29,9 @@ local DEFAULTS = {
   AutoDrop_Below10c = false,
   AutoDrop_Below2Pct = false,
   ShowPanel = nil,      -- decided on first login: false if an LDB display host is present
-  Locked = false,
-  Position = nil,       -- { point, x, y }
+  PanelScope = "account", -- "account" | "character": where Locked/Position live (see PanelStore)
+  Locked = false,       -- panel lock; in GotJunkCharDB instead when PanelScope == "character"
+  Position = nil,       -- { point, x, y }; same scope rule as Locked
   Minimap = { hide = true },
   Protect = {},         -- account-wide protected list: [itemID] = true
   BuiltinRemoved = {},  -- built-in entries the user removed: [itemID] = true (persists across updates)
@@ -38,6 +39,7 @@ local DEFAULTS = {
 }
 
 local db
+local PanelStore   -- forward declaration; defined in the "standalone panel" section, used by the tooltip above it
 
 -- ---------------------------------------------------------------------------
 -- utils / API shims (Era 1.15 and Forever 16001 both expose C_Container; keep fallbacks)
@@ -542,7 +544,7 @@ function GJ.ShowPanelTooltip()
     local below = cy and cy > UIParent:GetHeight() / 2
     GameTooltip:SetOwner(panel, below and "ANCHOR_BOTTOM" or "ANCHOR_TOP")
     OnTooltipShow(GameTooltip)
-    if not db.Locked then GameTooltip:AddLine("Drag to move  (/gotjunk lock)", 0.5, 0.5, 0.5) end
+    if not PanelStore().Locked then GameTooltip:AddLine("Drag to move  (/gotjunk lock)", 0.5, 0.5, 0.5) end
     GameTooltip:Show()
   end)
   if dbg or not ok then
@@ -615,15 +617,32 @@ end
 -- standalone panel
 -- ---------------------------------------------------------------------------
 
+-- Where the panel's Locked/Position live: GotJunkDB (account wide) or GotJunkCharDB (per
+-- character), chosen by the account-wide db.PanelScope radio. Everything that reads or writes
+-- Locked/Position goes through here.
+function PanelStore()
+  if db.PanelScope == "character" then return GotJunkCharDB end
+  return db
+end
+
 local function SavePosition()
   local point, _, _, x, y = panel:GetPoint(1)
-  db.Position = { point, x, y }
+  PanelStore().Position = { point, x, y }
 end
 
 local function RestorePosition()
+  local pos = PanelStore().Position
   panel:ClearAllPoints()
-  if db.Position then panel:SetPoint(db.Position[1], UIParent, db.Position[1], db.Position[2], db.Position[3])
+  if pos then panel:SetPoint(pos[1], UIParent, pos[1], pos[2], pos[3])
   else panel:SetPoint("TOP", UIParent, "TOP", 0, -120) end
+end
+
+-- Switch scope and re-anchor the panel from the newly selected store. Nothing is copied:
+-- each store keeps whatever it last had.
+function GJ.SetPanelScope(scope)
+  db.PanelScope = scope == "character" and "character" or "account"
+  if panel then RestorePosition() end
+  GJ.Refresh()
 end
 
 -- Occupancy strip: one tiny dot per bag slot, bright = occupied, dim = free. Rows of up to
@@ -722,7 +741,7 @@ local function CreatePanel()
   panel.text:SetPoint("RIGHT", -5, 0)
   panel.text:SetJustifyH("LEFT")
   panel.text:SetWordWrap(false)
-  panel:SetScript("OnDragStart", function(self) if not db.Locked then self:StartMoving() end end)
+  panel:SetScript("OnDragStart", function(self) if not PanelStore().Locked then self:StartMoving() end end)
   panel:SetScript("OnDragStop", function(self) self:StopMovingOrSizing(); SavePosition() end)
   panel:SetScript("OnClick", OnClick)
   panel:SetScript("OnEnter", function() GJ.StartPreview(); GJ.ShowPanelTooltip() end)
@@ -868,13 +887,30 @@ local function CreateOptions()
   -- Section: Display
   local disp = Section("Display")
   disp:Add(Check(disp, "ShowPanel", "Show standalone panel", "Off by default when a LibDataBroker display (ChocolateBar, Titan...) is present."), 26)
-  disp:Add(Check(disp, "Locked", "Lock panel position"), 26)
   local c5 = disp:Add(Check(disp, "MinimapHide", "Hide minimap button"), 26)
   c5:SetScript("OnClick", function(self) db.Minimap.hide = self:GetChecked() and true or false; GJ.OnOptionChanged("MinimapHide") end)
   c5.Update = function(self) self:SetChecked(db.Minimap.hide and true or false) end
   disp:Add(Slider(disp, "GotJunkOptionsShowWhen", "ShowWhenFreeBelow", 3, 0, 20,
     function(v) return "Show junk when fewer than " .. v .. " slots free (0 = never)" end, GJ.Refresh), 44, -10)
   disp:Finish()
+
+  -- Section: Panel (position + lock, stored account-wide or per character per the radio)
+  local pn = Section("Panel")
+  local scopeRadios = {}
+  local function ScopeRadio(scope, label, tip)
+    local r = CreateFrame("CheckButton", nil, pn, "UIRadioButtonTemplate"); r:SetSize(16, 16)
+    r.text = r:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall"); r.text:SetPoint("LEFT", r, "RIGHT", 4, 0); r.text:SetText(label)
+    r.tooltipText = tip
+    r:SetScript("OnClick", function() GJ.SetPanelScope(scope); for _, o in ipairs(scopeRadios) do o:SetChecked(o.scope == scope) end; if optionsFrame.Update then optionsFrame:Update() end end)
+    r.scope = scope; r.Update = function(self) self:SetChecked((db.PanelScope or "account") == scope) end
+    scopeRadios[#scopeRadios + 1] = r; return pn:Add(r, 16, -6, 0)
+  end
+  ScopeRadio("account", "Panel position and lock are account wide", "One position and lock state shared by every character.")
+  ScopeRadio("character", "Panel position and lock are per character", "Each character keeps its own panel position and lock state.")
+  local lockCb = pn:Add(Check(pn, "Locked", "Lock panel position"), 26, -8)
+  lockCb:SetScript("OnClick", function(self) PanelStore().Locked = self:GetChecked() and true or false end)
+  lockCb.Update = function(self) self:SetChecked(PanelStore().Locked and true or false) end
+  pn:Finish()
 
   -- Section: Visual style (radio group)
   local vs = Section("Visual style")
@@ -987,8 +1023,8 @@ local function Slash(msg)
   cmd = cmd:lower()
   if cmd == "" then db.ShowPanel = not db.ShowPanel; GJ.Refresh(); Print("panel %s", db.ShowPanel and "shown" or "hidden")
   elseif cmd == "options" or cmd == "config" or cmd == "settings" then GJ.OpenOptions()
-  elseif cmd == "lock" then db.Locked = not db.Locked; Print("panel %s", db.Locked and "locked" or "unlocked")
-  elseif cmd == "reset" then db.Position = nil; if panel then RestorePosition() end; Print("panel position reset")
+  elseif cmd == "lock" then local ps = PanelStore(); ps.Locked = not ps.Locked; Print("panel %s (%s)", ps.Locked and "locked" or "unlocked", db.PanelScope)
+  elseif cmd == "reset" then PanelStore().Position = nil; if panel then RestorePosition() end; Print("panel position reset (%s)", db.PanelScope)
   elseif cmd == "drop" then if not GJ.DropWorst("slash") then Print("nothing dropped (needs a hardware event, e.g. a keybound macro)") end
   elseif cmd == "scan" then GJ.Scan(); Print("%d junk slots, total %s, %d free slots", #GJ.JunkSlots, FormatMoney(GJ.Junk_TotalValue), GJ.FreeSlots)
   elseif cmd == "tipdebug" then GJ.TipDebug = not GJ.TipDebug; Print("tooltip debug %s - hover the panel and read chat", GJ.TipDebug and "ON" or "off")
@@ -1029,6 +1065,10 @@ end
 local function InitDB()
   if type(GotJunkDB) ~= "table" then GotJunkDB = {} end
   db = GotJunkDB
+  -- Per-character store: the protected "character" tier and, when PanelScope == "character",
+  -- the panel's Locked/Position. Created here so writes never land in a throwaway table.
+  if type(GotJunkCharDB) ~= "table" then GotJunkCharDB = {} end
+  GotJunkCharDB.Protect = GotJunkCharDB.Protect or {}
   db.Version = db.Version or DB_VERSION
   for k, v in pairs(DEFAULTS) do
     if db[k] == nil and v ~= nil then

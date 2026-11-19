@@ -90,7 +90,8 @@ Trigger: loot-button `OnMouseDown` (hooked). Era: `LootButton1..4`. Forever/Main
 - Slots to keep clear: slider 0–10 (default 1)
 - [ ] Auto-drop below 10c slot max
 - [ ] Auto-drop below 2% of all bag junk value
-- [ ] Show standalone panel   [ ] Lock panel   [ ] Hide minimap button
+- [ ] Show standalone panel   [ ] Hide minimap button
+- Panel: ( ) account wide / ( ) per character   [ ] Lock panel position  (see "Panel scope")
 - Protected items list with a `Clear` button (text)
 
 ## Slash `/gotjunk`
@@ -102,11 +103,20 @@ works from a keybound macro/hardware event) · `protect [itemlink|itemID]` toggl
 GotJunkDB = {
   Version = 1,
   KeepClearSlots = 1, AutoDrop_Below10c = false, AutoDrop_Below2Pct = false,
-  ShowPanel = nil --[[decided on first login]], Locked = false, Position = { point, x, y },
+  ShowPanel = nil --[[decided on first login]],
+  PanelScope = "account" --[["account" | "character"]], Locked = false, Position = { point, x, y },
   Minimap = { hide = false },
   Protect = { [itemID] = true },
 }
+GotJunkCharDB = { Protect = {}, Locked = false, Position = { point, x, y } }
 ```
+
+### Panel scope (options "Panel" section)
+Radio `Panel position and lock are account wide` (default) / `... per character`, saved as
+`GotJunkDB.PanelScope`. `PanelStore()` returns `GotJunkDB` or `GotJunkCharDB` accordingly and is the
+**only** path to `Locked` / `Position` (drag, `/gotjunk lock`, `/gotjunk reset`, tooltip hint, options
+checkbox). Switching scope copies nothing: the panel re-anchors from the newly selected store (default
+anchor if that store has no position yet), and each store keeps its own values for switching back.
 
 ## Files
 ```

@@ -12,6 +12,7 @@ First release. Classic Era and WoW Forever.
 - Panel previews for 30s at login so it can be found and moved. Optional auto-hide when nothing is eligible (default off).
 - Visual style: classic rounded border or modern flat. Money shown gold / silver / copper coloured.
 - Tooltip lists the five worst slots with current and full-stack value, total junk value, free slots and auto-drop status; rebuilt in place after every protect or drop.
+- "Panel" options section: panel position and lock are stored account wide (default) or per character, chosen by a radio; `/gotjunk lock` and `/gotjunk reset` follow the chosen scope.
 
 ### Ranking
 - Slots are ranked by full-stack value (`vendor price x max stack`) ascending, tie-broken by actual value, so a non-stacking 5c pelt goes before 3 x 1c water, and a 2/20 stack before a 20/20 stack of the same item.
