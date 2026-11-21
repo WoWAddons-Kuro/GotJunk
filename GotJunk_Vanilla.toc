@@ -2,7 +2,7 @@
 ## Title: GotJunk
 ## Notes: Always shows the least valuable grey/white slot in your bags. Click it to destroy it. Optionally destroys it for you when you loot with full bags.
 ## Author: Kuro
-## Version: v2026.11.20.2345
+## Version: @project-version@
 ## SavedVariables: GotJunkDB
 ## SavedVariablesPerCharacter: GotJunkCharDB
 ## OptionalDeps: LibStub, CallbackHandler-1.0, LibDataBroker-1.1, LibDBIcon-1.0
