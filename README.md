@@ -26,6 +26,8 @@ Classic Era and WoW Forever.
 | click | action |
 |---|---|
 | Left | destroy the shown slot |
+| Ctrl-Left | **force** destroy the hovered slot when bags are not yet tight (the row says "no eligible junk", but hovering reveals the lowest slot in orange with a `(Ctrl)` tag; a plain click refuses) |
+| hold Alt | rank by **current slot value** instead of full-stack value (row, tooltip and click all follow; combine with Ctrl) |
 | Right | options |
 | Shift-Right | protect the shown item (never offered again) |
 

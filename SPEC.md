@@ -79,6 +79,13 @@ Trigger: loot-button `OnMouseDown` (hooked). Era: `LootButton1..4`. Forever/Main
 
 ### Standalone panel
 - One row: icon + `x10 - 10c Worthless Sandals`, draggable (unless locked), same clicks as LDB.
+- **Gated hover / Ctrl.** When `freeSlots >= ShowWhenFreeBelow` the row says `no eligible junk to drop`; hovering
+  lifts the gate and shows the lowest slot in **orange** with a `(Ctrl)` tag. A plain left-click then refuses
+  (chat hint); **Ctrl-left-click** force-destroys it. Tooltip shows `Ctrl-left-click force destroy` in that state.
+- **Alt = current-value ranking.** While Alt is held `GJ.Worst(true)` returns the slot with the lowest
+  `price * count` instead of list order; the row, the tooltip top-5 and the click all use it. Ctrl+Alt combine.
+  Shift is never used for ranking so Shift-right-click always protects exactly the item shown.
+  `MODIFIER_STATE_CHANGED` re-renders the tooltip/row live while hovered.
 - Hidden when there are no candidates or free slots >= ShowWhenFreeBelow, EXCEPT during a **preview**: 30s after login and 30s after each hover (so it can be found and moved), or when `AutoHide` is off (default).
 - **Occupancy strip** above the row: one 4px dot per general-bag slot, bright grey = occupied, dim grey = free, up to 20 per row (rows balanced, centred). Icon+text row centred beneath; icon desaturated when nothing to drop.
 - `db.ShowPanel` is decided once at first login: `false` if an LDB display host is detected

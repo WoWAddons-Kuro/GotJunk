@@ -240,7 +240,16 @@ function GJ.Scan()
   GJ.Refresh()
 end
 
-function GJ.Worst() return GJ.JunkSlots[1] end
+-- Worst eligible slot. Default ranking is by full-stack value (list order); with byCurrent
+-- (Shift held) the slot with the lowest CURRENT value (price * count) is returned instead.
+function GJ.Worst(byCurrent)
+  if not byCurrent then return GJ.JunkSlots[1] end
+  local best
+  for _, j in ipairs(GJ.JunkSlots) do
+    if not best or j.value < best.value then best = j end
+  end
+  return best
+end
 
 -- Is the auto-drop condition met for the worst slot right now? (AND of ticked boxes)
 -- Does one junk slot pass the ticked thresholds? (AND of ticked boxes; none ticked = never)
@@ -509,11 +518,20 @@ local panel
 local function OnClick(_, button)
   if button == "RightButton" then
     if IsShiftKeyDown() then
-      local w = GJ.Worst()
+      local w = GJ.Worst(IsAltKeyDown())
       if w then GJ.ToggleProtect(w.itemID) else Print("nothing to protect - no eligible junk") end
     else GJ.OpenOptions() end
   else
-    GJ.DropWorst()
+    -- Alt: rank by CURRENT slot value instead of full-stack value (what the row shows).
+    -- Ctrl: required when the shown slot is only visible because of the hover (the free-slot
+    -- gate says nothing is eligible). Ctrl+Alt work together. Shift is reserved for protect.
+    local byCurrent = IsAltKeyDown()
+    local w = GJ.Worst(byCurrent)
+    if w and GJ.FreeSlots >= (db.ShowWhenFreeBelow or 0) and not IsControlKeyDown() then
+      Print("no eligible junk (%d free slots) - hold |cffffffffCtrl|r and click to force-drop %s", GJ.FreeSlots, w.link or w.name)
+    else
+      GJ.DropSlot(w, byCurrent and "lowest current value" or nil)
+    end
   end
   GJ.RefreshTooltip()
 end
@@ -569,24 +587,41 @@ function GJ.RefreshTooltip()
 end
 
 OnTooltipShow = function(tt)
+  local byCurrent = IsAltKeyDown()
   tt:AddLine("GotJunk")
   if #GJ.JunkSlots == 0 then
     tt:AddLine("No junk in bags", 0.7, 0.7, 0.7)
   else
-    for i = 1, math.min(5, #GJ.JunkSlots) do
-      local j = GJ.JunkSlots[i]
+    -- Shift held: list re-ranked by CURRENT slot value instead of full-stack value.
+    local list = GJ.JunkSlots
+    if byCurrent then
+      list = {}
+      for i, j in ipairs(GJ.JunkSlots) do list[i] = j end
+      table.sort(list, function(a, b) if a.value ~= b.value then return a.value < b.value end return a.maxStackValue < b.maxStackValue end)
+    end
+    for i = 1, math.min(5, #list) do
+      local j = list[i]
       tt:AddDoubleLine(string.format("|T%s:14|t %s x%d/%d", tostring(j.icon), j.link or j.name, j.count, j.maxStack), string.format("%s |cff808080(%s max)|r", FormatMoney(j.value), FormatMoney(j.maxStackValue)), 1, 1, 1, 1, 0.82, 0)
     end
-    tt:AddDoubleLine(string.format("%d junk slots total (ranked by full-stack value)", #GJ.JunkSlots), FormatMoney(GJ.Junk_TotalValue), 0.7, 0.7, 0.7, 0.7, 0.7, 0.7)
+    tt:AddDoubleLine(string.format("%d junk slots total (ranked by %s)", #GJ.JunkSlots, byCurrent and "|cffffffffcurrent|r value" or "full-stack value"), FormatMoney(GJ.Junk_TotalValue), 0.7, 0.7, 0.7, 0.7, 0.7, 0.7)
   end
   tt:AddDoubleLine("Free slots", tostring(GJ.FreeSlots) .. " (keep " .. tostring(db.KeepClearSlots) .. " clear)", 0.7, 0.7, 0.7, 1, 1, 1)
   if db.AutoDrop_Below10c or db.AutoDrop_Below2Pct then
     tt:AddLine((function() local n = GJ.AutoDrop_Plan(false); if n > 0 then return string.format("|cffff4040Auto-drop pending: next loot click destroys %d slot(s)|r", n) end return "|cff60ff60Auto-drop armed|r - sizes the drop to the loot it is picking up" end)())
   end
   tt:AddLine(" ")
-  tt:AddLine("|cffffffffLeft-click|r destroy worst slot", 0.8, 0.8, 0.8)
+  local gated = #GJ.JunkSlots > 0 and GJ.FreeSlots >= (db.ShowWhenFreeBelow or 0)
+  if not gated then tt:AddLine("|cffffffffLeft-click|r destroy worst slot", 0.8, 0.8, 0.8) end
+  tt:AddLine("|cffffffffHold Alt|r rank by current value instead of full stack", 0.8, 0.8, 0.8)
   tt:AddLine("|cffffffffRight-click|r options", 0.8, 0.8, 0.8)
   tt:AddLine("|cffffffffShift-right-click|r protect worst item", 0.8, 0.8, 0.8)
+  if gated then
+    -- Gated state: one centred orange footer instead of a Ctrl hint buried in the key list.
+    tt:AddLine(" ")
+    tt:AddLine("|cffffb000no eligible junk, hold Ctrl to override|r", 1, 1, 1)
+    local fs = _G[tt:GetName() .. "TextLeft" .. tt:NumLines()]
+    if fs then fs:SetJustifyH("CENTER") end
+  end
 end
 
 local function SetupLDB()
@@ -756,18 +791,21 @@ end
 -- refresh both displays from the current scan
 -- ---------------------------------------------------------------------------
 function GJ.Refresh()
-  local w = GJ.Worst()
+  local w = GJ.Worst(IsAltKeyDown())
   local pending = GJ.AutoDrop_Pending()
   -- Display gate: the worst slot is only surfaced once bags are getting tight; the
   -- tooltip/status keep the full list regardless. The login preview only forces the
   -- *panel* visible (showing "no eligible junk"). While the mouse is OVER the panel the
-  -- gate is lifted so the row shows exactly what a click would destroy.
+  -- gate is lifted so the row shows what a click would destroy - but because the item is
+  -- NOT eligible by the gate, that click must be Ctrl-left-click (forced; shown in orange).
   local previewing = GetTime() < (GJ.PreviewUntil or 0)
   local hovering = panel and panel:IsMouseOver()
-  if w and not hovering and GJ.FreeSlots >= (db.ShowWhenFreeBelow or 0) then w = nil end
+  local gated = w and GJ.FreeSlots >= (db.ShowWhenFreeBelow or 0)
+  if gated and not hovering then w = nil end
+  local color = pending and "|cffff4040" or (gated and "|cffffb000") or COLOR
   local text
   if w then
-    text = string.format("%sx%d - %s|r %s", pending and "|cffff4040" or COLOR, w.count, FormatMoney(w.value), w.link or w.name)
+    text = string.format("%sx%d - %s|r %s%s", color, w.count, FormatMoney(w.value), w.link or w.name, gated and " |cffffb000(Ctrl)|r" or "")
   end
   if ldbObject then
     ldbObject.icon = w and w.icon or ADDON_ICON
@@ -1101,6 +1139,7 @@ f:SetScript("OnEvent", function(_, event, arg1)
     f:RegisterEvent("GET_ITEM_INFO_RECEIVED")
     f:RegisterEvent("LOOT_OPENED")
     f:RegisterEvent("PLAYER_ENTERING_WORLD")
+    f:RegisterEvent("MODIFIER_STATE_CHANGED")
     GJ.Scan()
   elseif event == "BAG_UPDATE_DELAYED" or event == "PLAYER_ENTERING_WORLD" then
     GJ.Scan()
@@ -1108,5 +1147,9 @@ f:SetScript("OnEvent", function(_, event, arg1)
     if GJ.Scan_Incomplete then GJ.Scan() end
   elseif event == "LOOT_OPENED" then
     HookLootButtons()
+  elseif event == "MODIFIER_STATE_CHANGED" then
+    -- Shift (rank by current value) / Alt (force) change what the hovered row and tooltip
+    -- show; re-render live while the mouse is on the panel.
+    if panel and panel:IsVisible() and panel:IsMouseOver() then GJ.ShowPanelTooltip() end
   end
 end)
